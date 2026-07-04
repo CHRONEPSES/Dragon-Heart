@@ -1,2 +1,2 @@
 # Dragon-Heart
-An RPG adventure
+An RPG Adventure
