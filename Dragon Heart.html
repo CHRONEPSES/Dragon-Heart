@@ -1,0 +1,3227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DRAGON HEART</title>
+<style>
+  :root{
+    --bg:#0a0a23;
+    --box:#0d1b4c;
+    --border:#f8f8f8;
+    --gold:#ffd54a;
+    --hp:#4ade80;
+    --hplow:#ef4444;
+    --mp:#60a5fa;
+    --text:#f8f8f8;
+    --accent:#ff6b6b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:#000;
+    color:var(--text);
+    font-family:'Courier New', monospace;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:12px;
+    -webkit-user-select:none;
+    user-select:none;
+  }
+  h1{
+    font-size:15px;
+    letter-spacing:3px;
+    color:var(--gold);
+    text-shadow:2px 2px 0 #7a4a00;
+    margin:4px 0 10px 0;
+  }
+  #stageOuter{
+    position:relative;
+  }
+  #stage{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    position:absolute;
+    top:0; left:0;
+    transform-origin: top left;
+  }
+  #gameWrap{
+    position:relative;
+    border:4px solid var(--border);
+    box-shadow: 0 0 0 4px #000, 0 0 0 6px var(--gold);
+    background:var(--bg);
+  }
+  canvas{
+    display:block;
+    image-rendering: pixelated;
+    background:#000;
+  }
+  .box{
+    background:var(--box);
+    border:3px solid var(--border);
+    box-shadow: inset 0 0 0 2px #000;
+    padding:10px 12px;
+    font-size:11px;
+    line-height:1.6;
+  }
+  #dialogue{
+    position:absolute;
+    left:8px; right:8px; bottom:8px;
+    min-height:64px;
+    display:none;
+  }
+  #dialogue.centered{
+    left:0; right:0; bottom:auto; top:50%;
+    margin-left:auto; margin-right:auto;
+    transform:translateY(-50%);
+    width:420px;
+    max-width:calc(100% - 32px);
+    text-align:center;
+  }
+  #dialogue.centered .row{ justify-content:center; }
+  #statBar{
+    position:absolute;
+    top:8px; left:8px; right:8px;
+    display:flex;
+    justify-content:space-between;
+    font-size:10px;
+    pointer-events:none;
+  }
+  #statBar .box{padding:4px 8px;}
+  .expbar-inner{height:100%; background:linear-gradient(90deg, #a855f7, #ec4899); transition:width 0.4s ease;}
+  #menuPanel{
+    position:absolute;
+    left:8px; right:8px; bottom:8px;
+    display:none;
+    flex-direction:column;
+    gap:6px;
+  }
+  #menuPanel .row{display:flex; gap:6px; flex-wrap:wrap;}
+  button{
+    font-family:'Courier New', monospace;
+    background:var(--box);
+    color:var(--text);
+    border:2px solid var(--border);
+    padding:8px 12px;
+    font-size:11px;
+    cursor:pointer;
+    letter-spacing:1px;
+  }
+  button:hover{background:#1a2f6e;}
+  button:active{background:var(--gold); color:#000;}
+  button:disabled{opacity:0.4; cursor:default;}
+  #controls{
+    margin-top:14px;
+    display:flex;
+    gap:40px;
+    align-items:center;
+  }
+  #dpad{
+    display:grid;
+    grid-template-columns:30px 30px 30px;
+    grid-template-rows:30px 30px 30px;
+    gap:3px;
+  }
+  #dpad button{padding:0; font-size:11px;}
+  .empty{visibility:hidden;}
+  #actionBtns{display:flex; flex-direction:column; gap:5px;}
+  #actionBtns button{padding:5px 8px; font-size:7px;}
+  #btnSkills.hasPoints{
+    border-color:var(--gold);
+    color:var(--gold);
+    animation:skillGlow 1.2s ease-in-out infinite;
+  }
+  #btnInteract.canInteract{
+    border-color:var(--gold);
+    color:var(--gold);
+    animation:skillGlow 1.2s ease-in-out infinite;
+  }
+  @keyframes skillGlow{
+    0%,100%{ box-shadow:0 0 3px var(--gold); }
+    50%{ box-shadow:0 0 12px var(--gold), 0 0 20px rgba(255,213,74,0.4); }
+  }
+  .hpbar-outer{
+    width:100%; height:8px; background:#111; border:1px solid var(--border); margin-top:2px;
+  }
+  .hpbar-inner{height:100%; background:var(--hp);}
+  .mpbar-inner{height:100%; background:var(--mp);}
+  #battleUI{
+    position:absolute; top:0; left:0; right:0; bottom:0;
+    display:none;
+    flex-direction:column;
+    justify-content:flex-end;
+  }
+  .enemyName{font-size:11px; color:var(--gold); margin-bottom:2px;}
+  #enemyStatus{position:absolute; top:8px; left:8px; width:180px;}
+  #playerStatus{position:absolute; top:8px; right:8px; width:190px; display:none;}
+  .flash{animation: flash 0.15s linear 2;}
+  @keyframes flash{ 0%{filter:brightness(3);} 100%{filter:brightness(1);} }
+  #hint{font-size:9px; opacity:0.6; margin-top:10px; text-align:center; max-width:520px;}
+
+  #skillScreen{
+    display:none;
+    position:absolute;
+    left:140px; top:24px;
+    width:372px;
+    background:var(--box);
+    border:3px solid var(--border);
+    box-shadow:0 0 0 2px #000, 5px 5px 0 rgba(0,0,0,0.5);
+    flex-direction:column;
+    z-index:15;
+  }
+  #skillScreen .skillBody{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:8px 8px 4px 8px;
+  }
+  #skillScreen .sTitle{
+    display:none;
+  }
+  #skillScreen .sSub{ font-size:9px; opacity:0.8; margin-bottom:6px; }
+  #skillHoverInfo{
+    font-size:10px;
+    min-height:34px;
+    max-width:420px;
+    text-align:center;
+    margin-bottom:8px;
+    padding:6px 10px;
+    line-height:1.5;
+  }
+  #skillHoverInfo .shName{ color:var(--gold); font-weight:bold; }
+  .skillGrid{
+    display:grid;
+    grid-template-columns: repeat(7, 46px);
+    grid-template-rows: repeat(7, 46px);
+    gap:3px;
+    position:relative;
+  }
+  .skillNode{
+    width:46px; height:46px;
+    border-radius:50%;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-size:6.5px; text-align:center; line-height:1.15;
+    border:2px solid #444;
+    background:#111132;
+    color:#888;
+    cursor:default;
+    padding:1px;
+  }
+  .skillNode.hub{
+    background:radial-gradient(circle, #3a2f0a, #111132);
+    border-color:var(--gold);
+    color:var(--gold);
+    font-size:8px;
+    font-weight:bold;
+  }
+  .skillNode.unlocked{
+    color:#fff;
+    box-shadow:0 0 8px currentColor;
+  }
+  .skillNode.available{
+    cursor:pointer;
+    color:#fff;
+    border-style:dashed;
+    animation:pulseNode 1.2s infinite;
+  }
+  .skillNode.available:hover{ filter:brightness(1.3); }
+  @keyframes pulseNode{
+    0%,100%{ box-shadow:0 0 2px currentColor; }
+    50%{ box-shadow:0 0 12px currentColor; }
+  }
+  .skillNode .snName{ font-size:7px; margin-top:1px; }
+  #skillScreen .sFooter{
+    margin-top:8px;
+    font-size:9px;
+    text-align:center;
+    max-width:420px;
+    min-height:24px;
+    padding:6px 8px;
+  }
+  #skillScreen .sClose{ margin-top:6px; }
+
+  #invScreen{
+    display:none;
+    position:absolute;
+    left:167px; top:34px;
+    width:306px;
+    background:var(--box);
+    border:3px solid var(--border);
+    box-shadow:0 0 0 2px #000, 5px 5px 0 rgba(0,0,0,0.5);
+    flex-direction:column;
+    z-index:15;
+    overflow:visible;
+  }
+  .invTitleBar{
+    cursor:move;
+    background:#0a1440;
+    padding:6px 10px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:11px;
+    color:var(--gold);
+    letter-spacing:1px;
+    border-bottom:2px solid var(--border);
+    touch-action:none;
+    user-select:none;
+  }
+  .invTitleBar .invCloseBtn{
+    cursor:pointer;
+    background:none;
+    border:1px solid var(--border);
+    color:#fff;
+    font-size:10px;
+    line-height:1;
+    padding:3px 7px;
+  }
+  .invTitleBar .invCloseBtn:hover{ background:var(--gold); color:#000; }
+  .invBody{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:8px 8px 4px 8px;
+  }
+  #invScreen .sTitle{ display:none; }
+  #invScreen .sSub{ font-size:9px; opacity:0.8; margin-bottom:6px; text-align:center; max-width:270px; }
+  #invHoverInfo{
+    font-size:9px;
+    min-height:28px;
+    max-width:340px;
+    text-align:center;
+    margin-bottom:6px;
+    padding:5px 8px;
+    line-height:1.4;
+  }
+  #invTooltip{
+    position:fixed;
+    display:none;
+    background:var(--box);
+    border:2px solid var(--gold);
+    box-shadow:0 0 0 2px #000;
+    color:#fff;
+    font-family:'Courier New', monospace;
+    font-size:12px;
+    line-height:1.5;
+    padding:6px 10px;
+    max-width:180px;
+    pointer-events:none;
+    z-index:9999;
+  }
+  .invGrid{
+    display:grid;
+    grid-template-columns: repeat(9, 30px);
+    grid-template-rows: repeat(9, 30px);
+    gap:2px;
+  }
+  .invCell{
+    width:30px; height:30px;
+    border:1px solid #3a3a55;
+    background:#111132;
+    display:flex; align-items:center; justify-content:center;
+    position:relative;
+    touch-action:none;
+  }
+  .invCell.filled{ cursor:grab; border-color:#555; }
+  .invCell.equippedCell{ border-color:var(--gold); box-shadow:inset 0 0 5px rgba(255,213,74,0.5); }
+  .shopGrid{
+    display:flex;
+    flex-wrap:wrap;
+    gap:4px;
+    margin-top:2px;
+  }
+  .shopSection{ margin-top:5px; }
+  .shopSectionLabel{
+    font-size:7px;
+    color:#9fb3ff;
+    letter-spacing:2px;
+    padding-bottom:1px;
+  }
+  .shopBtn{
+    display:flex;
+    flex-direction:row;
+    align-items:center;
+    gap:5px;
+    padding:3px 7px;
+    width:auto;
+    font-size:8px;
+    line-height:1.2;
+  }
+  .shopBtn .shopIcon{ display:flex; align-items:center; }
+  .shopBtn .shopIcon svg{ width:16px; height:16px; }
+  .shopBtn .shopPrice{ opacity:0.75; white-space:nowrap; }
+  .shopBtn:disabled .shopIcon{ opacity:0.4; }
+  #charSheetScreen{
+    display:none;
+    position:absolute;
+    left:24px; top:34px;
+    width:250px;
+    background:var(--box);
+    border:3px solid var(--border);
+    box-shadow:0 0 0 2px #000, 5px 5px 0 rgba(0,0,0,0.5);
+    flex-direction:column;
+    z-index:15;
+  }
+  #charSheetScreen .csBody{
+    padding:10px 12px;
+    font-size:10px;
+    line-height:1.7;
+  }
+  #charSheetScreen .csLabel{ color:#9fb3ff; }
+  .invCell.filled:active{ cursor:grabbing; }
+  .invCell.dragging{ opacity:0.35; }
+  .invCell.dragover{ outline:2px dashed var(--gold); outline-offset:-2px; }
+  .invCell .itemIcon{ width:20px; height:20px; pointer-events:none; }
+  .invCell .qtyBadge{
+    position:absolute; bottom:0; right:1px;
+    font-size:7px; color:#fff;
+    background:rgba(0,0,0,0.7);
+    padding:0 2px; border-radius:2px;
+    pointer-events:none;
+  }
+  #invScreen .sFooter{
+    margin-top:8px;
+    font-size:9px;
+    text-align:center;
+    max-width:340px;
+    min-height:22px;
+    padding:6px 8px;
+  }
+  #invScreen .sClose{ margin-top:6px; }
+
+  #titleScreen{
+    position:absolute; inset:0;
+    background:radial-gradient(ellipse at center, #16163f 0%, #05050f 100%);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    z-index:20;
+    text-align:center;
+    padding:20px;
+  }
+  #titleScreen .titleGlow{
+    margin-bottom:6px;
+    filter: drop-shadow(0 0 10px rgba(255,40,40,0.7));
+    animation:heartbeat 1.6s ease-in-out infinite;
+  }
+  #splashScreen{
+    position:absolute; inset:0;
+    background:radial-gradient(ellipse at center, #14040a 0%, #020104 100%);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    z-index:30;
+    cursor:pointer;
+  }
+  #splashScreen .splashHeart{
+    filter: drop-shadow(0 0 22px rgba(255,40,40,0.8));
+    animation:heartbeat 1.6s ease-in-out infinite;
+  }
+  #splashScreen .splashHint{
+    margin-top:28px;
+    font-size:11px;
+    letter-spacing:4px;
+    color:#e8b4b4;
+    animation:splashHintFade 2s ease-in-out infinite;
+  }
+  @keyframes splashHintFade{
+    0%,100%{ opacity:0.25; }
+    50%{ opacity:0.9; }
+  }
+  @keyframes heartbeat{
+    0%, 100%{ transform:scale(1); filter: drop-shadow(0 0 6px rgba(255,40,40,0.5)); }
+    10%{ transform:scale(1.16); filter: drop-shadow(0 0 16px rgba(255,40,40,0.9)); }
+    20%{ transform:scale(1); }
+    30%{ transform:scale(1.10); filter: drop-shadow(0 0 12px rgba(255,40,40,0.8)); }
+    40%{ transform:scale(1); }
+  }
+  #titleScreen .titleName{
+    font-size:26px;
+    font-weight:bold;
+    letter-spacing:3px;
+    color:#fff;
+    text-shadow:3px 3px 0 #7a4a00, 0 0 18px rgba(255,213,74,0.5);
+    line-height:1.4;
+    margin-bottom:10px;
+  }
+  #titleScreen .titleSub{
+    font-size:12px;
+    color:#9fb3ff;
+    letter-spacing:1px;
+    margin-bottom:26px;
+  }
+  #titleScreen button#btnStart{
+    font-size:16px;
+    padding:12px 34px;
+    letter-spacing:3px;
+    background:var(--box);
+    border:3px solid var(--gold);
+    color:var(--gold);
+    animation:startPulse 1.4s ease-in-out infinite;
+  }
+  #titleScreen button#btnStart:hover{ background:var(--gold); color:#000; }
+  @keyframes startPulse{
+    0%,100%{ box-shadow:0 0 4px var(--gold); }
+    50%{ box-shadow:0 0 16px var(--gold); }
+  }
+  #titleScreen .titleHint{
+    margin-top:22px;
+    font-size:9px;
+    opacity:0.6;
+    max-width:380px;
+  }
+
+  #charScreen{
+    display:none;
+    position:absolute; inset:0;
+    background:radial-gradient(ellipse at center, #16163f 0%, #05050f 100%);
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    z-index:20;
+    text-align:center;
+    padding:20px;
+  }
+  #charScreen .charTitle{
+    font-size:16px;
+    font-weight:bold;
+    letter-spacing:2px;
+    color:var(--gold);
+    text-shadow:2px 2px 0 #7a4a00;
+    margin-bottom:14px;
+  }
+  #charScreen .charPreviewWrap{
+    background:var(--box);
+    border:3px solid var(--border);
+    box-shadow:inset 0 0 0 2px #000;
+    padding:10px 18px;
+    margin-bottom:16px;
+  }
+  #charScreen .charLabel{
+    font-size:10px;
+    color:var(--gold);
+    letter-spacing:2px;
+    margin-bottom:6px;
+    display:block;
+  }
+  #charScreen input#charNameInput{
+    font-family:'Courier New', monospace;
+    font-size:14px;
+    letter-spacing:2px;
+    text-align:center;
+    background:var(--box);
+    color:var(--text);
+    border:2px solid var(--border);
+    padding:7px 10px;
+    width:200px;
+    margin-bottom:18px;
+    text-transform:uppercase;
+  }
+  #charScreen input#charNameInput:focus{
+    outline:none;
+    border-color:var(--gold);
+  }
+  .charColorRow{
+    display:flex;
+    gap:8px;
+    margin-bottom:22px;
+  }
+  .colorSwatch{
+    width:26px; height:26px;
+    border:2px solid #555;
+    cursor:pointer;
+    box-sizing:border-box;
+  }
+  .colorSwatch:hover{ border-color:#aaa; }
+  .colorSwatch.selected{
+    border-color:var(--gold);
+    box-shadow:0 0 8px var(--gold);
+  }
+  .charHairRow{
+    display:flex;
+    gap:6px;
+    flex-wrap:nowrap;
+    justify-content:center;
+    margin-bottom:22px;
+  }
+  .hairOption{
+    font-family:'Courier New', monospace;
+    font-size:9px;
+    padding:6px 9px;
+    background:var(--box);
+    color:var(--text);
+    border:2px solid #555;
+  }
+  .hairOption:hover{ border-color:#aaa; }
+  .hairOption.selected{
+    border-color:var(--gold);
+    color:var(--gold);
+    box-shadow:0 0 8px var(--gold);
+  }
+  #charScreen button#btnBeginAdventure{
+    font-size:14px;
+    padding:10px 26px;
+    letter-spacing:2px;
+    background:var(--box);
+    border:3px solid var(--gold);
+    color:var(--gold);
+  }
+  #charScreen button#btnBeginAdventure:hover{ background:var(--gold); color:#000; }
+</style>
+</head>
+<body>
+<h1>⚔ DRAGON HEART ⚔</h1>
+<div id="stageOuter">
+<div id="stage">
+<div id="gameWrap">
+  <canvas id="canvas" width="640" height="480"></canvas>
+
+  <div id="splashScreen" onclick="window.__ff1_dismissSplash()">
+    <div class="splashHeart">
+      <svg viewBox="0 0 64 64" width="160" height="160" xmlns="http://www.w3.org/2000/svg">
+        <path d="M30 15 C29 7 39 3 44 7 C48 10 47 16 44 18 L37 21" fill="#b03030"/>
+        <path d="M26 17 C24 10 15 10 14 15 C13 19 17 22 22 22" fill="#c05050"/>
+        <path d="M22 20 C11 22 7 34 13 44 C18 52 28 58 33 61 C37 55 48 45 51 34 C53 24 45 15 36 17 C31 18 28 19 22 20 Z" fill="#9e1515"/>
+        <path d="M22 20 C11 22 7 34 13 44 C16 49 21 53 26 56 C20 48 16 36 20 26 Z" fill="#7c1010"/>
+        <path d="M20 28 C18 34 20 41 25 46" stroke="rgba(255,150,150,0.55)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <path d="M35 24 C39 30 41 39 36 48" stroke="#6e0e0e" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path d="M31 26 C33 30 34 34 32 39" stroke="#6e0e0e" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="splashHint">CLICK TO BEGIN</div>
+  </div>
+
+  <div id="titleScreen">
+    <div class="titleGlow">
+      <svg viewBox="0 0 64 64" width="54" height="54" xmlns="http://www.w3.org/2000/svg">
+        <path d="M30 15 C29 7 39 3 44 7 C48 10 47 16 44 18 L37 21" fill="#b03030"/>
+        <path d="M26 17 C24 10 15 10 14 15 C13 19 17 22 22 22" fill="#c05050"/>
+        <path d="M22 20 C11 22 7 34 13 44 C18 52 28 58 33 61 C37 55 48 45 51 34 C53 24 45 15 36 17 C31 18 28 19 22 20 Z" fill="#9e1515"/>
+        <path d="M22 20 C11 22 7 34 13 44 C16 49 21 53 26 56 C20 48 16 36 20 26 Z" fill="#7c1010"/>
+        <path d="M20 28 C18 34 20 41 25 46" stroke="rgba(255,150,150,0.55)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <path d="M35 24 C39 30 41 39 36 48" stroke="#6e0e0e" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path d="M31 26 C33 30 34 34 32 39" stroke="#6e0e0e" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="titleName">DRAGON<br>HEART</div>
+    <div class="titleSub">A Retro-Style RPG Adventure</div>
+    <button id="btnStart" onclick="window.__ff1_startGame()">START</button>
+    <button id="btnContinue" style="display:none; margin-top:10px;" onclick="window.__ff1_continueGame()">CONTINUE</button>
+    <button id="btnImport" style="margin-top:10px; font-size:9px;" onclick="window.__ff1_showImport()">IMPORT SAVE</button>
+    <div id="importPanel" style="display:none; margin-top:12px; width:320px; max-width:90%;">
+      <textarea id="importCodeInput" placeholder="Paste your save code here..." style="width:100%; height:56px; font-family:'Courier New',monospace; font-size:9px; background:var(--box); color:var(--text); border:2px solid var(--border); padding:5px; resize:none;"></textarea>
+      <div id="importError" style="color:var(--hplow); font-size:9px; min-height:12px; margin-top:3px;"></div>
+      <div style="display:flex; gap:6px; justify-content:center; margin-top:4px;">
+        <button style="font-size:9px;" onclick="window.__ff1_doImport()">LOAD</button>
+        <button style="font-size:9px;" onclick="window.__ff1_hideImport()">CANCEL</button>
+      </div>
+    </div>
+    <div class="titleHint">Arrow keys / WASD or the D-pad to move once you begin</div>
+  </div>
+
+  <div id="charScreen">
+    <div class="charTitle">CREATE YOUR HERO</div>
+    <div class="charPreviewWrap">
+      <svg id="charPreviewSvg" width="64" height="64" viewBox="0 0 32 32"></svg>
+    </div>
+    <label class="charLabel" for="charNameInput">NAME</label>
+    <input id="charNameInput" type="text" maxlength="12" value="HERO" autocomplete="off">
+    <div class="charLabel">TUNIC COLOR</div>
+    <div class="charColorRow" id="charColorRow"></div>
+    <div class="charLabel">HAIR STYLE</div>
+    <div class="charHairRow" id="charHairRow"></div>
+    <div class="charLabel">HAIR COLOR</div>
+    <div class="charColorRow" id="charHairColorRow"></div>
+    <button id="btnBeginAdventure">BEGIN ADVENTURE</button>
+  </div>
+
+  <div id="statBar">
+    <div class="box" id="statLeft">
+      <div id="statLine">LV 1</div>
+      <div id="goldLine" style="margin-top:3px; display:flex; align-items:center; gap:5px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 3 L9 7 C5 8 3 11.5 3 15 C3 19 7 21 12 21 C17 21 21 19 21 15 C21 11.5 19 8 15 7 L12 3 Z" fill="#ffffff"/>
+          <rect x="9.5" y="2" width="5" height="3" rx="1" fill="#ffffff"/>
+          <circle cx="12" cy="14" r="2.6" fill="var(--box)"/>
+          <line x1="12" y1="12.2" x2="12" y2="15.8" stroke="var(--box)" stroke-width="1"/>
+        </svg>
+        <span id="goldValue" style="font-size:10px; color:var(--gold);">50 G</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:5px; margin-top:3px;">
+        <span style="font-size:9px; color:var(--gold);">EXP</span>
+        <div class="hpbar-outer" style="width:140px;"><div class="expbar-inner" id="expBarInner" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="enemyStatus"></div>
+  <div id="playerStatus"></div>
+
+  <div id="dialogue" class="box"></div>
+  <div id="menuPanel"></div>
+  <div id="skillScreen"></div>
+  <div id="invScreen"></div>
+  <div id="charSheetScreen"></div>
+</div>
+
+<div id="controls">
+  <div id="actionLeft">
+    <button id="btnInteract">ACTION (E)</button>
+  </div>
+  <div id="dpad">
+    <div class="empty"></div><button id="btnUp">▲</button><div class="empty"></div>
+    <button id="btnLeft">◀</button><div class="empty"></div><button id="btnRight">▶</button>
+    <div class="empty"></div><button id="btnDown">▼</button><div class="empty"></div>
+  </div>
+  <div id="actionBtns">
+    <button id="btnInventory">ITEMS (I)</button>
+    <button id="btnMenu">CHARACTER (C)</button>
+    <button id="btnSkills">PASSIVES (P)</button>
+    <button id="btnSave">SAVE</button>
+  </div>
+</div>
+<div id="hint">Arrow keys / WASD or the D-pad to move. Walk onto glowing doors to enter buildings. Tall grass hides monsters...</div>
+</div>
+</div>
+
+<script>
+(function(){
+"use strict";
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const TS = 32; // tile size
+const COLS = 20, ROWS = 15;
+
+// ---------- SCALE STAGE RELIABLY (avoids CSS zoom's absolute-positioning quirks) ----------
+let __ff1_naturalW = null, __ff1_naturalH = null;
+let __ff1_resizeQueued = false;
+let currentStageScale = 1;
+function updateStageScale(){
+  const stage = document.getElementById('stage');
+  const stageOuter = document.getElementById('stageOuter');
+  if(__ff1_naturalW===null){
+    stage.style.transform = 'none';
+    __ff1_naturalW = stage.offsetWidth;
+    __ff1_naturalH = stage.offsetHeight;
+  }
+  const h1 = document.querySelector('h1');
+  const h1Space = (h1 ? h1.offsetHeight : 0) + 28; // room for title + breathing space
+  const availW = Math.max(200, window.innerWidth - 20);
+  const availH = Math.max(150, window.innerHeight - h1Space - 20);
+  let scale = Math.min(availW/__ff1_naturalW, availH/__ff1_naturalH);
+  scale = Math.max(0.35, Math.min(scale, 3));
+  currentStageScale = scale;
+  stageOuter.style.width = (__ff1_naturalW*scale)+'px';
+  stageOuter.style.height = (__ff1_naturalH*scale)+'px';
+  stage.style.transform = `scale(${scale})`;
+}
+updateStageScale();
+window.addEventListener('resize', ()=>{
+  if(__ff1_resizeQueued) return;
+  __ff1_resizeQueued = true;
+  requestAnimationFrame(()=>{ updateStageScale(); __ff1_resizeQueued=false; });
+});
+window.addEventListener('orientationchange', updateStageScale);
+
+// ---------- MAP CONSTRUCTION ----------
+// tile codes: 0 grass(encounter) 1 path 2 tree 3 water 4 town-floor 5 wall 6 inn 7 shop 8 boss-door 9 healgrass(none)
+function buildMap(){
+  const g = [];
+  for(let y=0;y<ROWS;y++){
+    const row=[];
+    for(let x=0;x<COLS;x++){
+      if(x===0||y===0||x===COLS-1||y===ROWS-1) row.push(2);
+      else row.push(0);
+    }
+    g.push(row);
+  }
+  // path artery
+  for(let x=1;x<COLS-1;x++) g[7][x]=1;
+  for(let y=1;y<ROWS-1;y++) g[y][5]=1;
+  // town platform top-left — dirt sized to fit both cottages (x2..x9) with a one-tile front yard
+  for(let y=2;y<6;y++) for(let x=2;x<10;x++) g[y][x]=4;
+  // Inn — standalone cottage (roof row, wall row, door row) with campfire door
+  g[2][2]=9; g[2][3]=9; g[2][4]=9;
+  g[3][2]=10; g[3][3]=10; g[3][4]=10;
+  g[4][2]=10; g[4][3]=6; g[4][4]=10;
+  // Shop — separate standalone cottage, with a clear gap from the Inn, with potion door
+  g[2][7]=9; g[2][8]=9; g[2][9]=9;
+  g[3][7]=10; g[3][8]=10; g[3][9]=10;
+  g[4][7]=10; g[4][8]=7; g[4][9]=10;
+  // lakes — 3x3 blocked footprints; rendered as true circles in drawLakes()
+  for(let y=9;y<12;y++) for(let x=1;x<4;x++) g[y][x]=3;
+  for(let y=9;y<12;y++) for(let x=14;x<17;x++) g[y][x]=3;
+  // castle top-right with boss door
+  for(let x=14;x<18;x++) g[2][x]=5;
+  for(let x=14;x<18;x++) g[3][x]=5;
+  g[2][15]=5; g[2][16]=5;
+  g[3][16]=8; // boss door
+  g[3][14]=5; g[3][17]=5;
+  // cobblestone forecourt below the castle
+  for(let x=14;x<18;x++) g[4][x]=11;
+  // cobblestone path from the forecourt down to the dirt road (row 7)
+  g[5][16]=11; g[6][16]=11;
+  // magical vine sealing the eastern pass (right of the castle)
+  g[7][18]=12;
+  return g;
+}
+function buildDesertMap(){
+  const g = [];
+  for(let y=0;y<ROWS;y++){
+    const row=[];
+    for(let x=0;x<COLS;x++){
+      if(x===0||y===0||x===COLS-1||y===ROWS-1) row.push(14);
+      else row.push(15);
+    }
+    g.push(row);
+  }
+  // exit back west to the overworld
+  g[7][0]=13;
+  // scattered rocks and cacti
+  [[4,3],[9,4],[14,3],[6,10],[12,11],[16,8],[3,11],[10,8],[15,12],[7,6],[17,4]].forEach(([x,y])=>{ g[y][x]=14; });
+  return g;
+}
+const overworldMap = buildMap();
+const desertMap = buildDesertMap();
+let map = overworldMap;
+function setActiveZone(zone){
+  player.zone = zone;
+  map = (zone==='desert') ? desertMap : overworldMap;
+}
+function applyVineState(){
+  if(player.vineDestroyed){
+    overworldMap[7][18]=1;   // vine gone, path restored
+    overworldMap[7][19]=13;  // eastern exit revealed
+  } else {
+    overworldMap[7][18]=12;
+    overworldMap[7][19]=2;
+  }
+}
+
+function tileAt(x,y){
+  if(y<0||y>=ROWS||x<0||x>=COLS) return 2;
+  return map[y][x];
+}
+function isBlocked(t){ return t===2||t===3||t===5||t===9||t===10||t===12||t===14; }
+
+// ---------- PLAYER ----------
+const player = {
+  x:5, y:8, // tile coords
+  facing:'down',
+  name:'HERO',
+  level:1, hp:32, maxhp:32, mp:8, maxmp:8,
+  atk:9, def:4, exp:0, expNext:20,
+  gold:60, potions:3, ethers:1,
+  bossDefeated:false,
+  skillPoints:0,
+  unlockedSkills:{}, // id -> true
+  potionHealBonus:0,
+  cureHealBonus:0,
+  hasCleave:false, hasAimedShot:false, hasIce:false, hasThunder:false, hasCure:false,
+  itemSlots:{ potion:0, ether:1 },
+  gear:[{uid:1, id:'bronze_sword', gridSlot:2}],
+  equipped:{ weapon:null, armor:null, accessory:null },
+  zone:'overworld',
+  vineDestroyed:false
+};
+
+// ---------- ENEMY DATA ----------
+const enemyTypes = [
+  {name:'Slime',   hp:14, atk:5,  def:1, exp:6,  gold:8,  color:'#4ade80', shape:'blob'},
+  {name:'Bat',     hp:16, atk:7,  def:2, exp:9,  gold:11, color:'#a78bfa', shape:'bat'},
+  {name:'Goblin',  hp:24, atk:9,  def:3, exp:15, gold:19, color:'#84cc16', shape:'gob'},
+  {name:'Wolf',    hp:30, atk:11, def:4, exp:22, gold:27, color:'#94a3b8', shape:'wolf'},
+];
+const desertEnemyTypes = [
+  {name:'Sand Slime', hp:36, atk:13, def:5, exp:30, gold:36, color:'#d8b96a', shape:'blob'},
+  {name:'Vulture',    hp:40, atk:15, def:6, exp:38, gold:44, color:'#8a6a45', shape:'bat'},
+  {name:'Scorpion',   hp:52, atk:17, def:8, exp:48, gold:56, color:'#c9803a', shape:'gob'},
+  {name:'Dune Stalker', hp:62, atk:19, def:9, exp:60, gold:70, color:'#e0c37a', shape:'wolf'},
+];
+const boss = {name:'GREEN DRAGON', hp:150, atk:19, def:8, exp:0, gold:0, color:'#3a9d23', shape:'dragon'};
+
+// ---------- SKILL TREES (cross layout) ----------
+// grid is 7x7, center (row4,col4) is the hero hub. Each tree is an arm of 3 nodes.
+const skillTrees = {
+  melee: {
+    label:'MELEE', color:'#ef4444', pos:[{r:3,c:4},{r:2,c:4},{r:1,c:4}],
+    nodes:[
+      {id:'m1', name:'Power Strike', desc:'+3 ATK', reqLevel:1,
+        apply:()=>{ player.atk+=3; }},
+      {id:'m2', name:'Iron Skin', desc:'+3 DEF', reqLevel:3,
+        apply:()=>{ player.def+=3; }},
+      {id:'m3', name:'Berserker Rage', desc:'+5 ATK, unlocks CLEAVE', reqLevel:5,
+        apply:()=>{ player.atk+=5; player.hasCleave=true; }}
+    ]
+  },
+  ranged: {
+    label:'RANGED', color:'#22c55e', pos:[{r:4,c:5},{r:4,c:6},{r:4,c:7}],
+    nodes:[
+      {id:'g1', name:'Steady Aim', desc:'+3 ATK', reqLevel:1,
+        apply:()=>{ player.atk+=3; }},
+      {id:'g2', name:'Quick Reflex', desc:'+2 DEF', reqLevel:3,
+        apply:()=>{ player.def+=2; }},
+      {id:'g3', name:'Deadeye', desc:'+3 ATK, unlocks AIMED SHOT', reqLevel:5,
+        apply:()=>{ player.atk+=3; player.hasAimedShot=true; }}
+    ]
+  },
+  magic: {
+    label:'MAGIC', color:'#60a5fa', pos:[{r:4,c:3},{r:4,c:2},{r:4,c:1}],
+    nodes:[
+      {id:'a1', name:'Arcane Focus', desc:'+4 Max MP', reqLevel:1,
+        apply:()=>{ player.maxmp+=4; player.mp+=4; }},
+      {id:'a2', name:'Ice Shard', desc:'Unlocks ICE spell', reqLevel:3,
+        apply:()=>{ player.hasIce=true; }},
+      {id:'a3', name:'Archmage', desc:'+6 Max MP, unlocks THUNDER', reqLevel:5,
+        apply:()=>{ player.maxmp+=6; player.mp+=6; player.hasThunder=true; }}
+    ]
+  },
+  healing: {
+    label:'HEALING', color:'#facc15', pos:[{r:5,c:4},{r:6,c:4},{r:7,c:4}],
+    nodes:[
+      {id:'h1', name:'First Aid', desc:'Potions heal +15 more', reqLevel:1,
+        apply:()=>{ player.potionHealBonus+=15; }},
+      {id:'h2', name:'Cure Spell', desc:'Unlocks CURE spell', reqLevel:3,
+        apply:()=>{ player.hasCure=true; }},
+      {id:'h3', name:'Miracle', desc:'+8 Max HP, CURE heals +15 more', reqLevel:5,
+        apply:()=>{ player.maxhp+=8; player.hp+=8; player.cureHealBonus+=15; }}
+    ]
+  }
+};
+
+// ---------- STATE ----------
+let state = 'title'; // title | overworld | battle | menu | dialog | dead | victoryScreen
+
+// ---------- SPLASH HEARTBEAT SOUND (synthesized, no audio files) ----------
+let audioCtx = null, heartbeatTimer = null, splashDismissing = false;
+function ensureAudio(){
+  if(!audioCtx){
+    try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(err){ return null; }
+  }
+  if(audioCtx && audioCtx.state==='suspended'){ audioCtx.resume().catch(()=>{}); }
+  return audioCtx;
+}
+function playThump(when, strong){
+  if(!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type='sine';
+  o.frequency.setValueAtTime(strong?58:50, when);
+  o.frequency.exponentialRampToValueAtTime(34, when+0.16);
+  g.gain.setValueAtTime(0.0001, when);
+  g.gain.exponentialRampToValueAtTime(strong?0.85:0.55, when+0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001, when+0.22);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(when); o.stop(when+0.26);
+}
+function playLubDub(){
+  if(!ensureAudio() || audioCtx.state!=='running') return;
+  const t = audioCtx.currentTime + 0.02;
+  playThump(t, true);       // lub — matches the big 10% beat
+  playThump(t+0.30, false); // dub — matches the smaller 30% beat
+}
+function startHeartbeatLoop(){
+  if(heartbeatTimer) return;
+  playLubDub();
+  heartbeatTimer = setInterval(playLubDub, 1600); // synced to the CSS heartbeat cycle
+}
+function stopHeartbeatLoop(){
+  if(heartbeatTimer){ clearInterval(heartbeatTimer); heartbeatTimer = null; }
+}
+// browsers only allow audio after a user gesture — start beating on the first press/key while the splash is up
+['pointerdown','keydown','touchstart'].forEach(ev=>{
+  window.addEventListener(ev, ()=>{
+    const s = document.getElementById('splashScreen');
+    if(s && s.style.display!=='none' && !heartbeatTimer){
+      ensureAudio();
+      setTimeout(()=>{ if(audioCtx && audioCtx.state==='running' && s.style.display!=='none') startHeartbeatLoop(); }, 30);
+    }
+  }, {passive:true});
+});
+window.__ff1_dismissSplash = ()=>{
+  const s = document.getElementById('splashScreen');
+  if(!s || s.style.display==='none' || splashDismissing) return;
+  splashDismissing = true;
+  ensureAudio();
+  startHeartbeatLoop();
+  const hint = s.querySelector('.splashHint');
+  if(hint) hint.textContent = '. . .';
+  // let a couple of audible beats play, then fade to the title screen
+  s.style.transition = 'opacity 0.8s ease';
+  setTimeout(()=>{ s.style.opacity = '0'; }, 2000);
+  setTimeout(()=>{ s.style.display = 'none'; stopHeartbeatLoop(); }, 2800);
+};
+let battle = null;
+let msgQueue = [];
+let animTimer = 0;
+let walkFrame = 0;
+
+const dlg = document.getElementById('dialogue');
+const menuPanel = document.getElementById('menuPanel');
+const statLeft = document.getElementById('statLeft');
+const statLine = document.getElementById('statLine');
+const goldValue = document.getElementById('goldValue');
+const enemyStatus = document.getElementById('enemyStatus');
+const playerStatus = document.getElementById('playerStatus');
+const statBar = document.getElementById('statBar');
+const skillScreen = document.getElementById('skillScreen');
+const titleScreen = document.getElementById('titleScreen');
+const charScreen = document.getElementById('charScreen');
+const invScreen = document.getElementById('invScreen');
+const charSheetScreen = document.getElementById('charSheetScreen');
+const gameWrapEl = document.getElementById('gameWrap');
+const btnInteractEl = document.getElementById('btnInteract');
+const invTooltip = document.createElement('div');
+invTooltip.id = 'invTooltip';
+document.body.appendChild(invTooltip);
+const expBarInner = document.getElementById('expBarInner');
+
+function updatePlayerStatusPanel(){
+  const hpPct = Math.max(0,player.hp)/player.maxhp;
+  const mpPct = player.maxmp>0 ? Math.max(0,player.mp)/player.maxmp : 0;
+  const expPct = Math.min(100, (player.exp/player.expNext)*100);
+  playerStatus.innerHTML = `<div class="box"><div class="enemyName">${player.name} LV${player.level}</div>
+    <div style="font-size:9px;">HP ${player.hp}/${player.maxhp}</div>
+    <div class="hpbar-outer"><div class="hpbar-inner" style="width:${hpPct*100}%; background:${hpPct<0.25?'var(--hplow)':'var(--hp)'}"></div></div>
+    <div style="font-size:9px; margin-top:3px;">MP ${player.mp}/${player.maxmp}</div>
+    <div class="hpbar-outer"><div class="mpbar-inner" style="width:${mpPct*100}%"></div></div>
+    <div style="font-size:8px; margin-top:3px;">EXP ${player.exp}/${player.expNext}</div>
+    <div class="hpbar-outer"><div class="expbar-inner" style="width:${expPct}%"></div></div>
+    </div>`;
+}
+
+function updateStatBar(){
+  statLine.textContent = `LV ${player.level}  HP ${player.hp}/${player.maxhp}  MP ${player.mp}/${player.maxmp}  SP ${player.skillPoints}`;
+  goldValue.textContent = `${player.gold} G`;
+  const expPct = Math.min(100, (player.exp/player.expNext)*100);
+  expBarInner.style.width = expPct+'%';
+  document.getElementById('btnSkills').classList.toggle('hasPoints', player.skillPoints>0);
+  if(typeof charSheetScreen!=='undefined' && charSheetScreen.style.display==='flex') renderCharSheet();
+  if(typeof skillScreen!=='undefined' && skillScreen.style.display==='flex') renderSkillScreen();
+  if(typeof persistSave==='function') persistSave();
+  updatePlayerStatusPanel();
+}
+updateStatBar();
+
+function showDialogue(text, opts){
+  dlg.style.display='block';
+  menuPanel.style.display='none';
+  dlg.classList.toggle('centered', !!(opts && opts.center));
+  dlg.innerHTML = text;
+  if(opts && opts.buttons){
+    const row=document.createElement('div');
+    row.style.marginTop='8px';
+    row.style.display='flex';
+    row.style.gap='6px';
+    row.style.flexWrap='wrap';
+    if(opts.center) row.style.justifyContent='center';
+    opts.buttons.forEach(b=>{
+      const btn=document.createElement('button');
+      btn.textContent=b.label;
+      btn.onclick=b.action;
+      if(b.disabled) btn.disabled=true;
+      row.appendChild(btn);
+    });
+    dlg.appendChild(row);
+  }
+}
+function hideDialogue(){ dlg.style.display='none'; dlg.innerHTML=''; dlg.classList.remove('centered'); invTooltip.style.display='none'; }
+function showMenu(html){
+  menuPanel.style.display='flex';
+  dlg.style.display='none';
+  menuPanel.innerHTML = html;
+}
+function hideMenu(){ menuPanel.style.display='none'; menuPanel.innerHTML=''; }
+
+// ---------- OVERWORLD RENDER ----------
+const TILE_COLORS = {
+  0:'#1c6b2e', 1:'#c2a366', 2:'#0d3a17', 3:'#2454a8', 4:'#8a6a45', 5:'#5b5b6b', 6:'#d9b779', 7:'#d9b779', 8:'#4a4a52', 11:'#7d7d88', 12:'#c2a366', 13:'#c2a366', 14:'#d8b96a', 15:'#d8b96a'
+};
+function drawTile(x,y,t){
+  const px=x*TS, py=y*TS;
+  ctx.fillStyle = TILE_COLORS[t] || '#000';
+  ctx.fillRect(px,py,TS,TS);
+  if(t===4){ // town ground renders as grass; the rounded dirt patch is drawn on top in drawTownDirt()
+    ctx.fillStyle = TILE_COLORS[0];
+    ctx.fillRect(px,py,TS,TS);
+    ctx.fillStyle = '#2f8f45';
+    for(let i=0;i<4;i++){
+      const bx = px+4+((i*7+ (x*3+y*5))%24);
+      ctx.fillRect(bx, py+26, 2, 6);
+    }
+  }
+  if(t===0){
+    // grass texture blades
+    ctx.fillStyle = '#2f8f45';
+    for(let i=0;i<4;i++){
+      const bx = px+4+((i*7+ (x*3+y*5))%24);
+      ctx.fillRect(bx, py+26, 2, 6);
+    }
+  } else if(t===2){
+    // grass ground beneath the tree
+    ctx.fillStyle = TILE_COLORS[0];
+    ctx.fillRect(px,py,TS,TS);
+    const seed = (x*5 + y*9) % 6;
+    const sway = (seed%2===0) ? 0 : 1;
+    // trunk
+    ctx.fillStyle='#5b3a1e';
+    ctx.fillRect(px+13, py+20, 6, 11);
+    ctx.fillStyle='#3d2712';
+    ctx.fillRect(px+13, py+20, 2, 11);
+    // canopy — dark base
+    ctx.fillStyle='#14501f';
+    ctx.beginPath();
+    ctx.arc(px+16, py+13, 13, 0, Math.PI*2);
+    ctx.fill();
+    // canopy — mid layer clusters
+    ctx.fillStyle='#1d6b2c';
+    ctx.beginPath();
+    ctx.arc(px+11+sway, py+11, 7, 0, Math.PI*2);
+    ctx.arc(px+21-sway, py+12, 7, 0, Math.PI*2);
+    ctx.arc(px+16, py+7, 7, 0, Math.PI*2);
+    ctx.fill();
+    // canopy — sunlit highlight
+    ctx.fillStyle='#2f8f45';
+    ctx.beginPath();
+    ctx.arc(px+13+seed%3, py+8, 4.5, 0, Math.PI*2);
+    ctx.arc(px+19, py+11, 3.5, 0, Math.PI*2);
+    ctx.fill();
+    // canopy shadow on ground
+    ctx.fillStyle='rgba(0,0,0,0.18)';
+    ctx.beginPath();
+    ctx.ellipse(px+16, py+29, 10, 3, 0, 0, Math.PI*2);
+    ctx.fill();
+  } else if(t===3){
+    // water tiles render as grass underneath; the circular lake is drawn on top in drawLakes()
+    ctx.fillStyle = TILE_COLORS[0];
+    ctx.fillRect(px,py,TS,TS);
+    ctx.fillStyle = '#2f8f45';
+    for(let i=0;i<4;i++){
+      const bx = px+4+((i*7+ (x*3+y*5))%24);
+      ctx.fillRect(bx, py+26, 2, 6);
+    }
+  } else if(t===5){ // damaged stone castle wall
+    const seed = (x*13 + y*7) % 10;
+    ctx.fillStyle='#4a4a52';
+    ctx.fillRect(px,py,TS,TS);
+    // mortar lines (brick pattern)
+    ctx.strokeStyle='#2e2e36';
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(px, py+TS/2); ctx.lineTo(px+TS, py+TS/2);
+    ctx.moveTo(px+TS/2, py); ctx.lineTo(px+TS/2, py+TS/2);
+    ctx.moveTo(px+TS/4, py+TS/2); ctx.lineTo(px+TS/4, py+TS);
+    ctx.moveTo(px+3*TS/4, py+TS/2); ctx.lineTo(px+3*TS/4, py+TS);
+    ctx.stroke();
+    // crumbled chunk missing (damage)
+    if(seed%3===0){
+      ctx.fillStyle='#232329';
+      ctx.beginPath();
+      ctx.moveTo(px+6,py+TS-1);
+      ctx.lineTo(px+15,py+TS-11);
+      ctx.lineTo(px+22,py+TS-1);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // moss / weather stains
+    if(seed%4===1){
+      ctx.fillStyle='rgba(58,102,58,0.35)';
+      ctx.beginPath();
+      ctx.ellipse(px+11, py+22, 8,5,0,0,Math.PI*2);
+      ctx.fill();
+    }
+    // crack lines
+    ctx.strokeStyle='#1a1a20';
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(px+3, py+3);
+    ctx.lineTo(px+8+(seed%4), py+13+(seed%3));
+    ctx.lineTo(px+4+(seed%5), py+TS-3);
+    ctx.stroke();
+    // broken battlements along the top rampart row
+    if(y===2){
+      ctx.fillStyle='#33333c';
+      if(seed%2===0){
+        ctx.fillRect(px+2, py-5, 10, 9);
+        if(seed!==6) ctx.fillRect(px+18, py-5, 9, 9);
+      } else if(seed%5===2){
+        ctx.fillRect(px+10, py-3, 8, 7);
+      }
+    }
+  } else if(t===1){
+    ctx.fillStyle='#b08f56';
+    for(let i=0;i<3;i++) ctx.fillRect(px+4+i*9, py+4+((i%2)*10), 4,4);
+  } else if(t===9){ // cottage roof
+    ctx.fillStyle='#8a3323';
+    ctx.fillRect(px,py,TS,TS);
+    ctx.strokeStyle='#5e2016';
+    ctx.lineWidth=1;
+    for(let i=1;i<4;i++){
+      ctx.beginPath();
+      ctx.moveTo(px, py+i*8);
+      ctx.lineTo(px+TS, py+i*8);
+      ctx.stroke();
+    }
+    ctx.fillStyle='#6e2a1c';
+    ctx.fillRect(px, py+TS-4, TS, 4);
+  } else if(t===10){ // cottage wall
+    ctx.fillStyle='#d9b779';
+    ctx.fillRect(px,py,TS,TS);
+    ctx.strokeStyle='#a9853f';
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(px+TS/2, py); ctx.lineTo(px+TS/2, py+TS);
+    ctx.stroke();
+    for(let i=1;i<3;i++){
+      ctx.beginPath();
+      ctx.moveTo(px, py+i*11);
+      ctx.lineTo(px+TS, py+i*11);
+      ctx.stroke();
+    }
+    ctx.strokeStyle='#7a5a24';
+    ctx.strokeRect(px+1,py+1,TS-2,TS-2);
+  } else if(t===11){ // cobblestone
+    const seed = (x*7 + y*3) % 5;
+    // mortar base
+    ctx.fillStyle='#55555f';
+    ctx.fillRect(px,py,TS,TS);
+    // rounded stones in offset rows
+    const stoneW=10, stoneH=8;
+    for(let row=0; row<4; row++){
+      const offset = (row%2===0) ? 0 : stoneW/2;
+      for(let col=-1; col<4; col++){
+        const sx = px + col*stoneW + offset + ((seed+row)%2);
+        const sy = py + row*stoneH + 1;
+        // per-stone shade variation
+        const shade = ((row*3+col+seed)%3);
+        ctx.fillStyle = shade===0 ? '#8a8a96' : (shade===1 ? '#7d7d88' : '#70707c');
+        ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(sx+1, sy, stoneW-2, stoneH-2, 3)
+                      : ctx.rect(sx+1, sy, stoneW-2, stoneH-2);
+        ctx.fill();
+        // top-light highlight
+        ctx.fillStyle='rgba(255,255,255,0.10)';
+        ctx.fillRect(sx+2, sy+1, stoneW-4, 2);
+      }
+    }
+  } else if(t===12){ // magical vine over the path
+    // path base
+    ctx.fillStyle='#b08f56';
+    for(let i=0;i<3;i++) ctx.fillRect(px+4+i*9, py+4+((i%2)*10), 4,4);
+    // pulsing magical glow
+    const pulse = 0.25 + 0.2*Math.sin(animTimer*0.06);
+    ctx.fillStyle=`rgba(74,222,128,${pulse.toFixed(2)})`;
+    ctx.fillRect(px,py,TS,TS);
+    // thick crossing vines
+    ctx.strokeStyle='#1e7a2e';
+    ctx.lineWidth=4;
+    ctx.beginPath();
+    ctx.moveTo(px, py+4);
+    ctx.bezierCurveTo(px+12, py+14, px+20, py+2, px+TS, py+10);
+    ctx.moveTo(px, py+18);
+    ctx.bezierCurveTo(px+10, py+28, px+22, py+14, px+TS, py+24);
+    ctx.moveTo(px+6, py);
+    ctx.bezierCurveTo(px+2, py+12, px+14, py+22, px+10, py+TS);
+    ctx.stroke();
+    ctx.lineWidth=1;
+    // thorns
+    ctx.fillStyle='#2f8f45';
+    ctx.beginPath(); ctx.moveTo(px+10,py+9); ctx.lineTo(px+13,py+4); ctx.lineTo(px+14,py+10); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(px+20,py+21); ctx.lineTo(px+24,py+16); ctx.lineTo(px+25,py+23); ctx.closePath(); ctx.fill();
+    // glowing runic node
+    const glowR = 3 + Math.sin(animTimer*0.08)*1.2;
+    ctx.fillStyle='#a7ffb8';
+    ctx.beginPath(); ctx.arc(px+16, py+16, glowR, 0, Math.PI*2); ctx.fill();
+  } else if(t===13){ // zone exit — shimmering passage
+    ctx.fillStyle='#b08f56';
+    for(let i=0;i<3;i++) ctx.fillRect(px+4+i*9, py+4+((i%2)*10), 4,4);
+    const shine = 0.15 + 0.15*Math.sin(animTimer*0.05);
+    ctx.fillStyle=`rgba(255,213,74,${shine.toFixed(2)})`;
+    ctx.fillRect(px,py,TS,TS);
+    // direction chevrons
+    ctx.strokeStyle='rgba(255,235,150,0.85)';
+    ctx.lineWidth=2;
+    const dir = (x<COLS/2) ? -1 : 1; // point outward
+    for(let i=0;i<2;i++){
+      const cxx = px+16 + dir*(i*7 - 3) + dir*((animTimer*0.4)%7);
+      ctx.beginPath();
+      ctx.moveTo(cxx - dir*4, py+10);
+      ctx.lineTo(cxx + dir*2, py+16);
+      ctx.lineTo(cxx - dir*4, py+22);
+      ctx.stroke();
+    }
+    ctx.lineWidth=1;
+  } else if(t===14){ // desert obstacle — cactus or boulder
+    const seed = (x*7 + y*11) % 4;
+    if(seed<2){ // saguaro cactus
+      ctx.fillStyle='#2f8f45';
+      ctx.fillRect(px+13, py+6, 6, 22);
+      ctx.fillRect(px+6, py+10, 5, 4);
+      ctx.fillRect(px+7, py+10, 4, 10);
+      ctx.fillRect(px+21, py+13, 5, 4);
+      ctx.fillRect(px+21, py+8, 4, 9);
+      ctx.fillStyle='#1e6b30';
+      ctx.fillRect(px+15, py+6, 2, 22);
+      // spines
+      ctx.fillStyle='#e8ffd0';
+      for(let i=0;i<4;i++) ctx.fillRect(px+12, py+9+i*5, 1.5, 1.5);
+      ctx.fillStyle='rgba(0,0,0,0.18)';
+      ctx.beginPath(); ctx.ellipse(px+16, py+29, 9, 3, 0, 0, Math.PI*2); ctx.fill();
+    } else { // boulder
+      ctx.fillStyle='#a08a5e';
+      ctx.beginPath();
+      ctx.ellipse(px+16, py+19, 12, 9, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle='#8a744a';
+      ctx.beginPath();
+      ctx.ellipse(px+19, py+21, 7, 5, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,0.18)';
+      ctx.beginPath();
+      ctx.ellipse(px+12, py+15, 4, 2.5, -0.4, 0, Math.PI*2);
+      ctx.fill();
+    }
+  } else if(t===15){ // desert sand
+    const seed = (x*13 + y*7) % 8;
+    // dune ripple lines
+    ctx.strokeStyle='#c2a24f';
+    ctx.lineWidth=1.2;
+    for(let w=0; w<2; w++){
+      const yOff = 9 + w*13 + (seed%3);
+      ctx.beginPath();
+      ctx.moveTo(px, py+yOff);
+      ctx.quadraticCurveTo(px+TS*0.3, py+yOff-3, px+TS*0.6, py+yOff);
+      ctx.quadraticCurveTo(px+TS*0.8, py+yOff+2, px+TS, py+yOff-1);
+      ctx.stroke();
+    }
+    ctx.lineWidth=1;
+    // sand speckles
+    ctx.fillStyle='#c2a24f';
+    ctx.fillRect(px+6+(seed%5)*3, py+22+(seed%3), 2, 2);
+    ctx.fillRect(px+20-(seed%4)*2, py+6+(seed%4), 2, 2);
+    ctx.fillStyle='#efd79a';
+    ctx.fillRect(px+14+(seed%3)*2, py+14+(seed%2)*4, 1.6, 1.6);
+  }
+  if(t===6 || t===7){ // inn/shop — plain arched wooden door blended into the wall
+    // wall texture continuity around the door
+    ctx.strokeStyle='#a9853f';
+    ctx.lineWidth=1;
+    for(let i=1;i<3;i++){
+      ctx.beginPath();
+      ctx.moveTo(px, py+i*11);
+      ctx.lineTo(px+TS, py+i*11);
+      ctx.stroke();
+    }
+    ctx.strokeStyle='#7a5a24';
+    ctx.strokeRect(px+1,py+1,TS-2,TS-2);
+    // soft mid-brown frame
+    ctx.fillStyle='#8a6a3c';
+    ctx.beginPath();
+    ctx.moveTo(px+5, py+TS);
+    ctx.lineTo(px+5, py+12);
+    ctx.arc(px+16, py+12, 11, Math.PI, 0);
+    ctx.lineTo(px+27, py+TS);
+    ctx.closePath();
+    ctx.fill();
+    // door planks
+    ctx.fillStyle='#7a4a20';
+    ctx.beginPath();
+    ctx.moveTo(px+7, py+TS);
+    ctx.lineTo(px+7, py+13);
+    ctx.arc(px+16, py+13, 9, Math.PI, 0);
+    ctx.lineTo(px+25, py+TS);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle='#5e3818';
+    ctx.lineWidth=1;
+    for(let i=1;i<3;i++){
+      ctx.beginPath();
+      ctx.moveTo(px+7+i*6, py+8);
+      ctx.lineTo(px+7+i*6, py+TS);
+      ctx.stroke();
+    }
+    // handle
+    ctx.fillStyle='#d8b45a';
+    ctx.beginPath();
+    ctx.arc(px+22, py+21, 1.8, 0, Math.PI*2);
+    ctx.fill();
+  }
+  if(t===8){ // boss door — skull symbol, blended into the castle stone
+    // stone texture continuity around the door
+    ctx.strokeStyle='#2e2e36';
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(px, py+TS/2); ctx.lineTo(px+TS, py+TS/2);
+    ctx.stroke();
+    // stone frame
+    ctx.fillStyle='#3a3a44';
+    ctx.beginPath();
+    ctx.moveTo(px+4, py+TS);
+    ctx.lineTo(px+4, py+11);
+    ctx.arc(px+16, py+11, 12, Math.PI, 0);
+    ctx.lineTo(px+28, py+TS);
+    ctx.closePath();
+    ctx.fill();
+    // dark-red door recess
+    ctx.fillStyle='#4a0f0f';
+    ctx.beginPath();
+    ctx.moveTo(px+6, py+TS);
+    ctx.lineTo(px+6, py+12);
+    ctx.arc(px+16, py+12, 10, Math.PI, 0);
+    ctx.lineTo(px+26, py+TS);
+    ctx.closePath();
+    ctx.fill();
+    const glow = (animTimer%30<15)?'#f5f5f5':'#c9a0a0';
+    // cranium
+    ctx.fillStyle=glow;
+    ctx.beginPath();
+    ctx.arc(px+16,py+13,8,Math.PI,0);
+    ctx.lineTo(px+22,py+18);
+    ctx.quadraticCurveTo(px+22,py+21,px+19,py+21);
+    ctx.lineTo(px+19,py+18);
+    ctx.lineTo(px+17,py+18);
+    ctx.lineTo(px+17,py+21);
+    ctx.lineTo(px+15,py+21);
+    ctx.lineTo(px+15,py+18);
+    ctx.lineTo(px+13,py+18);
+    ctx.lineTo(px+13,py+21);
+    ctx.quadraticCurveTo(px+10,py+21,px+10,py+18);
+    ctx.closePath();
+    ctx.fill();
+    // eye sockets
+    ctx.fillStyle='#4a0f0f';
+    ctx.beginPath();
+    ctx.arc(px+13,py+13,2.2,0,Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(px+19,py+13,2.2,0,Math.PI*2);
+    ctx.fill();
+    // nose
+    ctx.beginPath();
+    ctx.moveTo(px+16,py+15);
+    ctx.lineTo(px+14.5,py+17.5);
+    ctx.lineTo(px+17.5,py+17.5);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+let heroTunicColor = '#2b3a8f';
+function equippedGearId(slot){
+  const uid = player.equipped[slot];
+  if(!uid) return null;
+  const piece = gearByUid(uid);
+  return piece ? piece.id : null;
+}
+function drawPlayerSprite(px,py){
+  // simple 4-direction pixel hero
+  const bob = (walkFrame%2===0)?0:1;
+  ctx.fillStyle='#f4c98a'; // skin
+  ctx.fillRect(px+11, py+4+bob, 10, 8); // head
+  drawHairCanvas(heroHairStyle, heroHairColor, px, py, bob);
+  ctx.fillStyle=heroTunicColor; // tunic
+  ctx.fillRect(px+8, py+12+bob, 16, 12);
+  // equipped armor overlay
+  const armorId = equippedGearId('armor');
+  if(armorId==='leather_armor'){
+    ctx.fillStyle='#a5763c';
+    ctx.fillRect(px+8, py+12+bob, 16, 12);
+    ctx.fillStyle='#6b4420'; // belt strap
+    ctx.fillRect(px+8, py+17+bob, 16, 2);
+    ctx.fillStyle='#8a5a2c'; // shoulder pads
+    ctx.fillRect(px+7, py+12+bob, 3, 4);
+    ctx.fillRect(px+22, py+12+bob, 3, 4);
+  } else if(armorId){
+    const tone = ARMOR_TONES[armorId] || '#9aa4b5';
+    ctx.fillStyle=tone;
+    ctx.fillRect(px+8, py+12+bob, 16, 12);
+    ctx.fillStyle='rgba(255,255,255,0.35)'; // sheen
+    ctx.fillRect(px+10, py+13+bob, 3, 9);
+    ctx.fillStyle='rgba(0,0,0,0.25)'; // shoulder plates
+    ctx.fillRect(px+6, py+12+bob, 4, 5);
+    ctx.fillRect(px+22, py+12+bob, 4, 5);
+  }
+  ctx.fillStyle='#8a5a2c'; // legs/boots
+  ctx.fillRect(px+9, py+24+bob, 6, 6);
+  ctx.fillRect(px+17, py+24+bob, 6, 6);
+  // equipped weapon
+  const weaponId = equippedGearId('weapon');
+  if(weaponId){
+    const blade = WEAPON_BLADE_COLORS[weaponId] || '#c98f4a';
+    const guard = '#8a5a2c', grip = '#5e3f22';
+    if(player.facing==='right'){
+      ctx.fillStyle=grip;  ctx.fillRect(px+21, py+16+bob, 3, 3);
+      ctx.fillStyle=guard; ctx.fillRect(px+24, py+13+bob, 2, 9);
+      ctx.fillStyle=blade; ctx.fillRect(px+26, py+16+bob, 6, 3);
+    } else if(player.facing==='left'){
+      ctx.fillStyle=grip;  ctx.fillRect(px+8, py+16+bob, 3, 3);
+      ctx.fillStyle=guard; ctx.fillRect(px+6, py+13+bob, 2, 9);
+      ctx.fillStyle=blade; ctx.fillRect(px+0, py+16+bob, 6, 3);
+    } else if(player.facing==='up'){
+      ctx.fillStyle=blade; ctx.fillRect(px+26, py+5+bob, 3, 9);
+      ctx.fillStyle=guard; ctx.fillRect(px+24, py+14+bob, 7, 2);
+      ctx.fillStyle=grip;  ctx.fillRect(px+26, py+16+bob, 3, 4);
+    } else { // down
+      ctx.fillStyle=grip;  ctx.fillRect(px+26, py+13+bob, 3, 4);
+      ctx.fillStyle=guard; ctx.fillRect(px+24, py+17+bob, 7, 2);
+      ctx.fillStyle=blade; ctx.fillRect(px+26, py+19+bob, 3, 9);
+    }
+  }
+}
+
+// organic rounded lakes drawn over their blocked 3x3 tile footprints
+const LAKES = [
+  {cx: 2.5*TS, cy: 10.5*TS, r: 42, p1: 0.8, p2: 2.4},  // left pond (tiles x1..3, y9..11)
+  {cx: 15.5*TS, cy: 10.5*TS, r: 42, p1: 3.7, p2: 1.1}  // right pond (tiles x14..16, y9..11)
+];
+function traceLakePath(L, scale){
+  // abstract rounded blob: radius gently varies around the perimeter
+  const STEPS = 48;
+  ctx.beginPath();
+  for(let i=0;i<=STEPS;i++){
+    const a = (i/STEPS)*Math.PI*2;
+    const wobble = 1 + 0.13*Math.sin(3*a + L.p1) + 0.07*Math.sin(5*a + L.p2);
+    const rr = L.r * wobble * scale;
+    const xx = L.cx + Math.cos(a)*rr;
+    const yy = L.cy + Math.sin(a)*rr;
+    if(i===0) ctx.moveTo(xx,yy);
+    else ctx.lineTo(xx,yy);
+  }
+  ctx.closePath();
+}
+function drawLakes(){
+  LAKES.forEach((L, li)=>{
+    // sand ring (same blob, slightly larger)
+    ctx.fillStyle='#d8c48a';
+    traceLakePath(L, 1.11);
+    ctx.fill();
+    // water blob with vertical gradient
+    const grad = ctx.createLinearGradient(L.cx, L.cy-L.r, L.cx, L.cy+L.r);
+    grad.addColorStop(0,'#5aa8ec');
+    grad.addColorStop(0.5,'#2f6fc0');
+    grad.addColorStop(1,'#173f80');
+    ctx.fillStyle=grad;
+    traceLakePath(L, 1);
+    ctx.fill();
+    // foam line where water meets sand
+    ctx.strokeStyle='rgba(255,255,255,0.35)';
+    ctx.lineWidth=1;
+    traceLakePath(L, 0.97);
+    ctx.stroke();
+    // slow waves + shimmer, clipped to the blob
+    ctx.save();
+    traceLakePath(L, 0.96);
+    ctx.clip();
+    const t1 = animTimer*0.018 + li*3;
+    ctx.strokeStyle='rgba(255,255,255,0.22)';
+    ctx.lineWidth=1.2;
+    for(let w=0; w<3; w++){
+      const yOff = L.cy - L.r + (w+1)*(L.r*2/4) + Math.sin(t1+w*1.7)*1.6;
+      const drift = Math.sin(t1*0.7 + w)*4;
+      ctx.beginPath();
+      ctx.moveTo(L.cx-L.r*1.2, yOff);
+      ctx.quadraticCurveTo(L.cx-L.r/2+drift, yOff-3, L.cx, yOff);
+      ctx.quadraticCurveTo(L.cx+L.r/2+drift, yOff+3, L.cx+L.r*1.2, yOff);
+      ctx.stroke();
+    }
+    const sp = (animTimer*0.5 + li*29) % 110;
+    if(sp<16){
+      const a = 1 - Math.abs(sp-8)/8;
+      ctx.fillStyle = `rgba(255,255,255,${(0.4*a).toFixed(2)})`;
+      ctx.beginPath();
+      ctx.arc(L.cx-10+li*6, L.cy-9, 1.8, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  });
+}
+
+// abstract rounded dirt patch under the inn and shop (drawn over grass, under buildings)
+// superellipse blob sized so both cottages sit fully on the dirt even at minimum wobble
+const TOWN_DIRT = {cx: 6*TS, cy: 3.5*TS, rx: 162, ry: 65, n: 4, p1: 1.9, p2: 4.2};
+function traceTownDirtPath(scale){
+  const STEPS = 64;
+  ctx.beginPath();
+  for(let i=0;i<=STEPS;i++){
+    const a = (i/STEPS)*Math.PI*2;
+    const c = Math.cos(a), s = Math.sin(a);
+    const wobble = 1 + 0.05*Math.sin(3*a + TOWN_DIRT.p1) + 0.03*Math.sin(5*a + TOWN_DIRT.p2);
+    const bx = Math.sign(c)*Math.pow(Math.abs(c), 2/TOWN_DIRT.n)*TOWN_DIRT.rx;
+    const by = Math.sign(s)*Math.pow(Math.abs(s), 2/TOWN_DIRT.n)*TOWN_DIRT.ry;
+    const xx = TOWN_DIRT.cx + bx*wobble*scale;
+    const yy = TOWN_DIRT.cy + by*wobble*scale;
+    if(i===0) ctx.moveTo(xx,yy);
+    else ctx.lineTo(xx,yy);
+  }
+  ctx.closePath();
+}
+function drawTownDirt(){
+  ctx.save();
+  // keep the dirt off the forest border tiles
+  ctx.beginPath();
+  ctx.rect(TS, TS, (COLS-2)*TS, (ROWS-2)*TS);
+  ctx.clip();
+  // darker rim for a soft worn edge
+  ctx.fillStyle='#6e5436';
+  traceTownDirtPath(1.03);
+  ctx.fill();
+  // main dirt fill
+  ctx.fillStyle='#8a6a45';
+  traceTownDirtPath(1);
+  ctx.fill();
+  // texture clipped inside the blob
+  traceTownDirtPath(1);
+  ctx.clip();
+  for(let ty=1; ty<7; ty++){
+    for(let tx=0; tx<12; tx++){
+      const px=tx*TS, py=ty*TS;
+      const seed = (tx*11 + ty*17) % 12;
+      ctx.fillStyle='rgba(0,0,0,0.10)';
+      ctx.beginPath();
+      ctx.ellipse(px+8+(seed%5)*3, py+10+(seed%3)*4, 7,4,0,0,Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,0.06)';
+      ctx.beginPath();
+      ctx.ellipse(px+22-(seed%4)*2, py+22-(seed%3)*3, 6,4,0,0,Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle='#6e5436';
+      ctx.fillRect(px+5+(seed%6), py+6+(seed%4), 2,2);
+      ctx.fillRect(px+20-(seed%5), py+14+(seed%5), 2,2);
+      ctx.fillStyle='#9c7c52';
+      ctx.fillRect(px+16+(seed%4), py+8+(seed%3), 1.6,1.6);
+      ctx.fillRect(px+7-(seed%3), py+20+(seed%2), 1.6,1.6);
+      if(seed%4===0){
+        ctx.strokeStyle='rgba(58,42,24,0.5)';
+        ctx.lineWidth=1;
+        ctx.beginPath();
+        ctx.moveTo(px+4, py+26);
+        ctx.lineTo(px+13, py+18+(seed%3));
+        ctx.lineTo(px+24, py+22);
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.restore();
+}
+
+// wooden signs hanging from the top-right of the inn and shop
+function drawBuildingSigns(){
+  // anchors: right edge of each building at roof/wall seam
+  const signs = [
+    {ax: 5*TS-4, ay: 3*TS-2, kind:'inn'},   // inn spans x2..4
+    {ax: 10*TS-4, ay: 3*TS-2, kind:'shop'}  // shop spans x7..9
+  ];
+  signs.forEach((S, si)=>{
+    // bracket arm from the building edge
+    ctx.fillStyle='#3a2412';
+    ctx.fillRect(S.ax-2, S.ay, 16, 3);
+    ctx.fillRect(S.ax-2, S.ay-4, 3, 7);
+    // gentle sway around the bracket tip
+    const sway = Math.sin(animTimer*0.02 + si*2)*0.06;
+    const hx = S.ax+10, hy = S.ay+3; // hang point
+    ctx.save();
+    ctx.translate(hx, hy);
+    ctx.rotate(sway);
+    // chains
+    ctx.strokeStyle='#888';
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(-7, 0); ctx.lineTo(-7, 5);
+    ctx.moveTo(7, 0); ctx.lineTo(7, 5);
+    ctx.stroke();
+    // wooden board
+    ctx.fillStyle='#8a5a2c';
+    ctx.fillRect(-11, 5, 22, 20);
+    ctx.strokeStyle='#5e3818';
+    ctx.strokeRect(-11, 5, 22, 20);
+    ctx.strokeStyle='rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.moveTo(-11, 12); ctx.lineTo(11, 12);
+    ctx.moveTo(-11, 18); ctx.lineTo(11, 18);
+    ctx.stroke();
+    if(S.kind==='inn'){
+      // mini campfire icon
+      ctx.strokeStyle='#4a2c10';
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(-6, 22); ctx.lineTo(6, 18);
+      ctx.moveTo(-6, 18); ctx.lineTo(6, 22);
+      ctx.stroke();
+      ctx.lineWidth=1;
+      const flick = (animTimer%20<10)?0:1;
+      ctx.fillStyle='#ff8c1a';
+      ctx.beginPath();
+      ctx.moveTo(0, 7-flick);
+      ctx.quadraticCurveTo(4, 13, 1, 18);
+      ctx.quadraticCurveTo(3, 13, 0, 10);
+      ctx.quadraticCurveTo(-3, 13, -1, 18);
+      ctx.quadraticCurveTo(-4, 13, 0, 7-flick);
+      ctx.fill();
+      ctx.fillStyle='#ffe066';
+      ctx.beginPath();
+      ctx.arc(0, 15, 2, 0, Math.PI*2);
+      ctx.fill();
+    } else {
+      // mini potion icon
+      ctx.fillStyle='#8a5a2c';
+      ctx.fillRect(-2.5, 6.5, 5, 2);   // cork
+      ctx.fillStyle='#dfe6f0';
+      ctx.fillRect(-1.5, 8, 3, 3);     // neck
+      ctx.beginPath();                 // flask
+      ctx.moveTo(-2.5, 11);
+      ctx.lineTo(2.5, 11);
+      ctx.lineTo(5, 20);
+      ctx.quadraticCurveTo(0, 23.5, -5, 20);
+      ctx.closePath();
+      ctx.fill();
+      const bubble = (animTimer%30<15)?0:1;
+      ctx.fillStyle='#3b82f6';
+      ctx.beginPath();
+      ctx.moveTo(-3.5, 15+bubble);
+      ctx.lineTo(3.5, 15+bubble);
+      ctx.lineTo(4.6, 19.5);
+      ctx.quadraticCurveTo(0, 22.5, -4.6, 19.5);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  });
+}
+
+function drawOverworld(){
+  for(let y=0;y<ROWS;y++)
+    for(let x=0;x<COLS;x++)
+      drawTile(x,y,map[y][x]);
+  if(player.zone==='overworld'){
+    drawTownDirt();
+    // redraw buildings on top of the dirt patch
+    for(let y=0;y<ROWS;y++)
+      for(let x=0;x<COLS;x++){
+        const t = map[y][x];
+        if(t===9||t===10||t===6||t===7) drawTile(x,y,t);
+      }
+    drawBuildingSigns();
+    drawLakes();
+  }
+  drawPlayerSprite(player.x*TS, player.y*TS);
+}
+
+// ---------- MOVEMENT ----------
+let moveCooldown = 0;
+function tryMove(dx,dy){
+  if(state!=='overworld') return;
+  if(dx===1) player.facing='right';
+  else if(dx===-1) player.facing='left';
+  else if(dy===1) player.facing='down';
+  else if(dy===-1) player.facing='up';
+
+  const nx=player.x+dx, ny=player.y+dy;
+  const t = tileAt(nx,ny);
+  if(isBlocked(t)) return;
+  player.x=nx; player.y=ny;
+  walkFrame++;
+  if(typeof persistSave==='function') persistSave();
+
+  if(t===13){ // zone exit
+    if(player.zone==='overworld'){
+      setActiveZone('desert');
+      player.x=1; player.y=7;
+      player.facing='right';
+      state='dialog';
+      showDialogue(
+        `<b style="color:#e0c37a">THE SCORCHED EXPANSE</b><br>A blistering desert stretches before you. The creatures here are far deadlier — tread carefully.`,
+        {center:true, buttons:[{label:'ONWARD', action:()=>{ hideDialogue(); state='overworld'; }}]}
+      );
+    } else {
+      setActiveZone('overworld');
+      player.x=18; player.y=7;
+      player.facing='left';
+    }
+    persistSave();
+    return;
+  }
+  if(t===0 || t===15){
+    if(Math.random()<0.16){
+      startRandomBattle();
+      return;
+    }
+  }
+}
+
+function adjacentToVine(){
+  if(player.zone!=='overworld') return false;
+  return tileAt(player.x+1,player.y)===12 || tileAt(player.x-1,player.y)===12 ||
+         tileAt(player.x,player.y+1)===12 || tileAt(player.x,player.y-1)===12;
+}
+function hasQuestHeart(){
+  return player.gear.some(g=>g.id==='green_dragons_heart');
+}
+function vineDialog(){
+  state='dialog';
+  if(hasQuestHeart()){
+    showDialogue(
+      `A pulsing <b style="color:#4ade80">magical vine</b> seals the eastern pass.<br>The <b style="color:${RARITY_COLORS.relic}">Green Dragon's Heart</b> thrums in your pack, resonating with the vine's magic...`,
+      {buttons:[
+        {label:'USE THE HEART', action:()=>{
+          // consume the quest item
+          const idx = player.gear.findIndex(g=>g.id==='green_dragons_heart');
+          if(idx>=0) player.gear.splice(idx,1);
+          player.vineDestroyed = true;
+          applyVineState();
+          updateStatBar();
+          showDialogue(
+            `The heart dissolves into emerald light — the vine withers and crumbles to ash!<br><b style="color:#e0c37a">The eastern pass to the desert is open!</b>`,
+            {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+          );
+        }},
+        {label:'LEAVE', action:()=>{ hideDialogue(); state='overworld'; }}
+      ]}
+    );
+  } else {
+    showDialogue(
+      `A pulsing <b style="color:#4ade80">magical vine</b> seals the eastern pass. No blade can cut it.<br><span style="opacity:0.8">Perhaps the heart of a great creature could unravel its magic...</span>`,
+      {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+    );
+  }
+}
+function interact(){
+  if(state==='overworld'){
+    const t = tileAt(player.x,player.y);
+    if(t===6) openInn();
+    else if(t===7) openShop();
+    else if(t===8) enterBoss();
+    else if(adjacentToVine()) vineDialog();
+  }
+}
+
+// ---------- INPUT ----------
+window.addEventListener('keydown', e=>{
+  if(state==='overworld'){
+    if(['ArrowUp','w','W'].includes(e.key)) tryMove(0,-1);
+    else if(['ArrowDown','s','S'].includes(e.key)) tryMove(0,1);
+    else if(['ArrowLeft','a','A'].includes(e.key)) tryMove(-1,0);
+    else if(['ArrowRight','d','D'].includes(e.key)) tryMove(1,0);
+    else if(e.key==='e'||e.key==='E'||e.key===' ') interact();
+    else if(e.key==='p'||e.key==='P') openSkillScreen();
+    else if(e.key==='i'||e.key==='I') openInventory();
+    else if(e.key==='c'||e.key==='C') toggleStatus();
+    else if(e.key==='Escape'){ closeInventory(); closeCharSheet(); closeSkillScreen(); }
+  } else if(state==='dialog' && battle===null){
+    if(e.key==='Escape'){ hideDialogue(); state='overworld'; }
+  }
+});
+document.getElementById('btnUp').onclick=()=>tryMove(0,-1);
+document.getElementById('btnDown').onclick=()=>tryMove(0,1);
+document.getElementById('btnLeft').onclick=()=>tryMove(-1,0);
+document.getElementById('btnRight').onclick=()=>tryMove(1,0);
+document.getElementById('btnInteract').onclick=()=>interact();
+document.getElementById('btnMenu').onclick=()=>toggleStatus();
+document.getElementById('btnSkills').onclick=()=>openSkillScreen();
+document.getElementById('btnInventory').onclick=()=>openInventory();
+document.getElementById('btnSave').onclick=()=>manualSave();
+document.getElementById('btnBeginAdventure').onclick=()=>confirmCharacter();
+document.getElementById('charNameInput').addEventListener('keydown', (e)=>{
+  if(e.key==='Enter') confirmCharacter();
+  e.stopPropagation();
+});
+
+// generic draggable-window helper (drag by title bar, clamped to the game screen)
+// ---------- FLOATING WINDOW Z-ORDER ----------
+let topWindowZ = 20;
+function bringToFront(winEl){
+  topWindowZ++;
+  winEl.style.zIndex = topWindowZ;
+}
+[invScreen, charSheetScreen, skillScreen].forEach(w=>{
+  w.addEventListener('pointerdown', ()=>bringToFront(w), true);
+});
+
+function makeWindowDraggable(winEl, barId){
+  const bar = document.getElementById(barId);
+  if(!bar) return;
+  bar.addEventListener('pointerdown', (e)=>{
+    if(e.target.closest('.invCloseBtn')) return; // let the close button receive its click
+    e.preventDefault();
+    const startX = e.clientX, startY = e.clientY;
+    const startLeft = winEl.offsetLeft;
+    const startTop = winEl.offsetTop;
+    const parentEl = winEl.offsetParent || gameWrapEl;
+    try{ bar.setPointerCapture(e.pointerId); }catch(err){}
+    function onMove(ev){
+      const scale = currentStageScale || 1;
+      const dx = (ev.clientX-startX)/scale;
+      const dy = (ev.clientY-startY)/scale;
+      let newLeft = startLeft+dx;
+      let newTop = startTop+dy;
+      const maxLeft = Math.max(0, parentEl.clientWidth - winEl.offsetWidth);
+      const maxTop = Math.max(0, parentEl.clientHeight - winEl.offsetHeight);
+      newLeft = Math.max(0, Math.min(maxLeft, newLeft));
+      newTop = Math.max(0, Math.min(maxTop, newTop));
+      winEl.style.left = newLeft+'px';
+      winEl.style.top = newTop+'px';
+    }
+    function onUp(ev){
+      try{ bar.releasePointerCapture(e.pointerId); }catch(err){}
+      bar.removeEventListener('pointermove', onMove);
+      bar.removeEventListener('pointerup', onUp);
+    }
+    bar.addEventListener('pointermove', onMove);
+    bar.addEventListener('pointerup', onUp);
+  });
+}
+
+function equippedName(slot){
+  const uid = player.equipped[slot];
+  if(!uid) return '—';
+  const piece = gearByUid(uid);
+  return piece ? EQUIP_DEFS[piece.id].name : '—';
+}
+function renderCharSheet(){
+  charSheetScreen.innerHTML = `
+    <div class="invTitleBar" id="charSheetTitleBar">
+      <span>⚔ CHARACTER</span>
+      <button type="button" class="invCloseBtn" onclick="window.__ff1_closeCharSheet()">✕</button>
+    </div>
+    <div class="csBody">
+      <b style="color:var(--gold)">${player.name}</b> — LV ${player.level}<br>
+      HP ${player.hp}/${player.maxhp} &nbsp; MP ${player.mp}/${player.maxmp}<br>
+      ATK ${player.atk} &nbsp; DEF ${player.def}<br>
+      EXP ${player.exp}/${player.expNext} &nbsp; GOLD ${player.gold}<br>
+      Potions: ${player.potions} &nbsp; Ethers: ${player.ethers}<br>
+      <span class="csLabel">Weapon:</span> ${equippedName('weapon')}<br>
+      <span class="csLabel">Armor:</span> ${equippedName('armor')}<br>
+      <span class="csLabel">Accessory:</span> ${equippedName('accessory')}<br>
+      <b style="color:var(--gold)">Skill Points: ${player.skillPoints}</b> — press PASSIVES to spend them
+    </div>`;
+  makeWindowDraggable(charSheetScreen, 'charSheetTitleBar');
+}
+function isCharSheetOpen(){ return charSheetScreen.style.display==='flex'; }
+function toggleStatus(){
+  if(isCharSheetOpen()){ closeCharSheet(); return; }
+  if(state!=='overworld') return;
+  renderCharSheet();
+  charSheetScreen.style.display='flex';
+  bringToFront(charSheetScreen);
+}
+function closeCharSheet(){
+  charSheetScreen.style.display='none';
+}
+window.__ff1_closeCharSheet = ()=> closeCharSheet();
+
+// ---------- INVENTORY (9x9 drag-and-drop grid) ----------
+const INV_COLS = 9, INV_ROWS = 9, INV_SLOTS = INV_COLS*INV_ROWS;
+
+// ---------- EQUIPMENT ----------
+const RARITY_COLORS = {
+  common:'#b0b0b0', uncommon:'#4ade80', rare:'#60a5fa', epic:'#a855f7', legendary:'#ff8c1a', relic:'#ffd54a'
+};
+function rarityLabel(r){ return r.charAt(0).toUpperCase()+r.slice(1); }
+const EQUIP_DEFS = {
+  bronze_sword:   {name:'Bronze Sword',   slot:'weapon', atk:3,  desc:'+3 ATK',  price:30,  rarity:'common'},
+  iron_sword:     {name:'Iron Sword',     slot:'weapon', atk:6,  desc:'+6 ATK',  price:70,  rarity:'uncommon'},
+  steel_sword:    {name:'Steel Sword',    slot:'weapon', atk:10, desc:'+10 ATK', price:150, rarity:'rare'},
+  flame_blade:    {name:'Flame Blade',    slot:'weapon', atk:16, desc:'+16 ATK', price:320, rarity:'epic'},
+  dragonbane:     {name:'Dragonbane',     slot:'weapon', atk:24, desc:'+24 ATK', price:600, rarity:'legendary'},
+  leather_armor:  {name:'Leather Armor',  slot:'armor',  def:3,  desc:'+3 DEF',  price:25,  rarity:'common'},
+  iron_armor:     {name:'Iron Armor',     slot:'armor',  def:6,  desc:'+6 DEF',  price:60,  rarity:'uncommon'},
+  steel_armor:    {name:'Steel Armor',    slot:'armor',  def:10, desc:'+10 DEF', price:140, rarity:'rare'},
+  dragonscale_mail:{name:'Dragonscale Mail', slot:'armor', def:16, desc:'+16 DEF', price:300, rarity:'epic'},
+  lucky_charm:    {name:'Lucky Charm',    slot:'accessory', maxhp:10, desc:'+10 Max HP', price:40, rarity:'rare'},
+  dragon_heart:   {name:'Dragon Heart',   slot:'accessory', maxhp:20, atk:4, desc:'+20 Max HP, +4 ATK', price:450, rarity:'legendary'},
+  crown_of_chrone:{name:"Dragon King's Crown", slot:'accessory', atk:5, def:5, maxhp:20, maxmp:10, desc:'+5 ATK, +5 DEF, +20 HP, +10 MP', price:999, rarity:'relic', shop:false},
+  green_dragons_heart:{name:"Green Dragon's Heart", slot:'quest', desc:'Proof of the Green Dragon\'s defeat.', price:999, rarity:'relic', shop:false}
+};
+function rarityColorOf(id){ return RARITY_COLORS[EQUIP_DEFS[id] ? EQUIP_DEFS[id].rarity : 'common']; }
+const WEAPON_BLADE_COLORS = {
+  bronze_sword:'#c98f4a', iron_sword:'#cfd6e6', steel_sword:'#9fb3c8', flame_blade:'#ff8c1a', dragonbane:'#ffd54a'
+};
+const ARMOR_TONES = {
+  leather_armor:'#a5763c', iron_armor:'#9aa4b5', steel_armor:'#8f9aa8', dragonscale_mail:'#8a4ab0'
+};
+let nextGearUid = 2;
+function gearByUid(uid){ return player.gear.find(g=>g.uid===uid) || null; }
+function gearAtSlot(slot){ return player.gear.find(g=>g.gridSlot===slot) || null; }
+function isEquipped(uid){
+  return player.equipped.weapon===uid || player.equipped.armor===uid || player.equipped.accessory===uid;
+}
+function applyGearBonuses(def, sign){
+  if(def.atk) player.atk += sign*def.atk;
+  if(def.def) player.def += sign*def.def;
+  if(def.maxhp){
+    player.maxhp += sign*def.maxhp;
+    if(sign>0) player.hp += def.maxhp;
+    else player.hp = Math.min(player.hp, player.maxhp);
+  }
+  if(def.maxmp){
+    player.maxmp += sign*def.maxmp;
+    if(sign>0) player.mp += def.maxmp;
+    else player.mp = Math.min(player.mp, player.maxmp);
+  }
+}
+function toggleEquip(uid){
+  const piece = gearByUid(uid);
+  if(!piece) return;
+  const def = EQUIP_DEFS[piece.id];
+  if(def.slot==='quest'){
+    invFlashMsg(`${def.name} is a quest item — it cannot be equipped.`);
+    return;
+  }
+  if(isEquipped(uid)){
+    player.equipped[def.slot] = null;
+    applyGearBonuses(def, -1);
+    invFlashMsg(`Unequipped ${def.name}.`);
+  } else {
+    const currentUid = player.equipped[def.slot];
+    if(currentUid){
+      const curPiece = gearByUid(currentUid);
+      if(curPiece) applyGearBonuses(EQUIP_DEFS[curPiece.id], -1);
+    }
+    player.equipped[def.slot] = uid;
+    applyGearBonuses(def, +1);
+    invFlashMsg(`Equipped ${def.name} (${def.desc}).`);
+  }
+  updateStatBar();
+}
+function findFreeInvSlot(){
+  for(let i=0;i<INV_SLOTS;i++){
+    if(!occupantAt(i)) return i;
+  }
+  return -1;
+}
+function addGearToInventory(id){
+  const slot = findFreeInvSlot();
+  if(slot<0) return false;
+  player.gear.push({uid: nextGearUid++, id, gridSlot: slot});
+  return true;
+}
+
+// occupant lookup: consumables (potion/ether) or gear
+function occupantAt(slot){
+  for(const t of ['potion','ether']){
+    if(player.itemSlots[t]===slot && itemQty(t)>0) return {kind:t};
+  }
+  const g = gearAtSlot(slot);
+  if(g) return {kind:'gear', uid:g.uid};
+  return null;
+}
+function itemQty(type){ return type==='potion' ? player.potions : player.ethers; }
+function itemIconSVG(occ){
+  const kind = occ.kind;
+  if(kind==='potion'){
+    return `<svg width="20" height="20" viewBox="0 0 24 24">
+      <rect x="10" y="2" width="4" height="4" fill="#8a5a2c"/>
+      <path d="M9 6 H15 L18 15 Q18 21 12 21 Q6 21 6 15 Z" fill="#dfe6f0"/>
+      <path d="M8.3 14 H15.7 L17 17 Q17 20 12 20 Q7 20 7 17 Z" fill="#c04ee0"/>
+    </svg>`;
+  }
+  if(kind==='ether'){
+    return `<svg width="20" height="20" viewBox="0 0 24 24">
+      <path d="M12 2 L19 12 L12 22 L5 12 Z" fill="#60a5fa"/>
+      <path d="M12 2 L19 12 L12 12 Z" fill="#93c5fd"/>
+      <path d="M12 12 L19 12 L12 22 Z" fill="#3b82f6"/>
+    </svg>`;
+  }
+  // gear icons by equip slot
+  const piece = gearByUid(occ.uid);
+  return piece ? gearIconSVG(piece.id) : '';
+}
+function consumableIconSVG(kind){
+  return itemIconSVG({kind});
+}
+function gearIconSVG(id){
+  const def = EQUIP_DEFS[id];
+  if(def && def.slot==='weapon'){
+    const blade = WEAPON_BLADE_COLORS[id] || '#c98f4a';
+    return `<svg width="20" height="20" viewBox="0 0 24 24">
+      <polygon points="12,1 14,3 14,14 10,14 10,3" fill="${blade}"/>
+      <rect x="7" y="14" width="10" height="2.5" fill="#8a5a2c"/>
+      <rect x="10.7" y="16.5" width="2.6" height="6" fill="#5e3f22"/>
+    </svg>`;
+  }
+  if(def && def.slot==='armor'){
+    const tone = ARMOR_TONES[id] || '#a5763c';
+    return `<svg width="20" height="20" viewBox="0 0 24 24">
+      <path d="M6 3 L12 5 L18 3 L20 8 L16 10 L16 21 L8 21 L8 10 L4 8 Z" fill="${tone}"/>
+      <path d="M12 5 L12 21" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>
+    </svg>`;
+  }
+  if(id==='dragon_heart'){
+    return `<svg width="20" height="20" viewBox="0 0 24 24">
+      <path d="M12 21 C4 14 4 7 8.5 6 C10.5 5.6 12 7.5 12 7.5 C12 7.5 13.5 5.6 15.5 6 C20 7 20 14 12 21 Z" fill="#dc2626"/>
+      <path d="M10 9 C9 9.5 8.5 11 9 12" stroke="#ff9a9a" stroke-width="1.4" fill="none"/>
+    </svg>`;
+  }
+  if(id==='green_dragons_heart'){
+    return `<svg width="20" height="20" viewBox="0 0 24 24">
+      <path d="M12 21 C4 14 4 7 8.5 6 C10.5 5.6 12 7.5 12 7.5 C12 7.5 13.5 5.6 15.5 6 C20 7 20 14 12 21 Z" fill="#2f8f22"/>
+      <path d="M10 9 C9 9.5 8.5 11 9 12" stroke="#9aff9a" stroke-width="1.4" fill="none"/>
+      <path d="M13 11 C15 12.5 15.5 15 14 17" stroke="#1e5c12" stroke-width="1.2" fill="none"/>
+    </svg>`;
+  }
+  if(id==='crown_of_chrone'){
+    return `<svg width="20" height="20" viewBox="0 0 24 24">
+      <path d="M4 18 L4 8 L9 12 L12 5 L15 12 L20 8 L20 18 Z" fill="#ffd54a" stroke="#b8860b" stroke-width="1"/>
+      <circle cx="12" cy="15" r="1.8" fill="#dc2626"/>
+    </svg>`;
+  }
+  return `<svg width="20" height="20" viewBox="0 0 24 24">
+    <circle cx="12" cy="14" r="7" fill="#ffd54a"/>
+    <circle cx="12" cy="14" r="4" fill="#c9992a"/>
+    <rect x="10.6" y="2" width="2.8" height="6" fill="#8a5a2c"/>
+  </svg>`;
+}
+function isInvOpen(){ return invScreen.style.display==='flex'; }
+function openInventory(){
+  if(isInvOpen()){ closeInventory(); return; }
+  if(state!=='overworld') return;
+  renderInventoryGrid();
+  invScreen.style.display='flex';
+  bringToFront(invScreen);
+}
+function closeInventory(){
+  invScreen.style.display='none';
+  invTooltip.style.display='none';
+}
+function invFlashMsg(msg){
+  const el = document.getElementById('invFooterMsg');
+  if(el) el.textContent = msg;
+}
+function useInventoryItemAtSlot(slot){
+  const occ = occupantAt(slot);
+  if(!occ) return;
+  if(occ.kind==='potion'){
+    if(player.hp>=player.maxhp){ invFlashMsg('HP is already full!'); return; }
+    player.potions--;
+    player.hp = Math.min(player.maxhp, player.hp + 25 + player.potionHealBonus);
+    updateStatBar();
+    invFlashMsg('Used a Potion and recovered HP!');
+  } else if(occ.kind==='ether'){
+    if(player.mp>=player.maxmp){ invFlashMsg('MP is already full!'); return; }
+    player.ethers--;
+    player.mp = Math.min(player.maxmp, player.mp + 10);
+    updateStatBar();
+    invFlashMsg('Used an Ether and recovered MP!');
+  } else if(occ.kind==='gear'){
+    toggleEquip(occ.uid);
+  }
+}
+function moveOrSwapItem(occ, fromSlot, toSlot){
+  const target = occupantAt(toSlot);
+  function setSlot(o, slot){
+    if(o.kind==='gear'){
+      const g = gearByUid(o.uid);
+      if(g) g.gridSlot = slot;
+    } else {
+      player.itemSlots[o.kind] = slot;
+    }
+  }
+  if(target) setSlot(target, fromSlot);
+  setSlot(occ, toSlot);
+}
+function itemInfo(occ){
+  if(occ.kind==='potion') return {name:'Potion', desc:`Restores ${25+player.potionHealBonus} HP when used.`, status:'Click to use.'};
+  if(occ.kind==='ether') return {name:'Ether', desc:'Restores 10 MP when used.', status:'Click to use.'};
+  const piece = gearByUid(occ.uid);
+  const def = EQUIP_DEFS[piece.id];
+  const isQuest = def.slot==='quest';
+  const type = isQuest ? 'Quest Item' : def.slot.charAt(0).toUpperCase()+def.slot.slice(1);
+  const rc = rarityColorOf(piece.id);
+  return {
+    name: def.name,
+    color: rc,
+    desc: `<span style="color:${rc}">${rarityLabel(def.rarity)}</span> <span style="color:#9fb3ff">${type}</span><br>${def.desc}`,
+    status: isQuest ? 'Cannot be equipped or sold.' : (isEquipped(occ.uid) ? 'Equipped — click to unequip.' : 'Click to equip.')
+  };
+}
+function renderInventoryGrid(){
+  let html = `<div class="invTitleBar" id="invTitleBar">
+      <span style="display:flex; align-items:center; gap:6px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M8 3 Q12 0 16 3 L16 5 L8 5 Z" fill="#5e3f22"/>
+          <rect x="4" y="5" width="16" height="16" rx="3" fill="#8a5a2c"/>
+          <rect x="7" y="9" width="10" height="7" rx="1.5" fill="#6b4420"/>
+          <rect x="7" y="12" width="10" height="1.6" fill="#c9a063"/>
+          <rect x="10.8" y="11" width="2.4" height="3.4" rx="0.5" fill="#c9a063"/>
+          <rect x="2.5" y="7" width="2" height="10" rx="1" fill="#5e3f22"/>
+          <rect x="19.5" y="7" width="2" height="10" rx="1" fill="#5e3f22"/>
+        </svg>
+        INVENTORY
+      </span>
+      <button type="button" class="invCloseBtn" onclick="window.__ff1_closeInv()">✕</button>
+    </div>
+    <div class="invBody">
+    <div class="sSub">Drag to rearrange. Click consumables to use, equipment to equip/unequip.</div>
+    <div class="invGrid" id="invGridEl">`;
+  for(let i=0;i<INV_SLOTS;i++){
+    const occ = occupantAt(i);
+    if(occ){
+      const equipped = occ.kind==='gear' && isEquipped(occ.uid);
+      const badge = occ.kind==='gear'
+        ? (equipped ? `<div class="qtyBadge" style="background:var(--gold); color:#000;">E</div>` : '')
+        : `<div class="qtyBadge">${itemQty(occ.kind)}</div>`;
+      let cellStyle = '';
+      if(occ.kind==='gear' && !equipped){
+        const piece = gearByUid(occ.uid);
+        cellStyle = `style="border-color:${rarityColorOf(piece.id)};"`;
+      }
+      html += `<div class="invCell filled${equipped?' equippedCell':''}" data-slot="${i}" ${cellStyle}>
+        <div class="itemIcon">${itemIconSVG(occ)}</div>
+        ${badge}
+      </div>`;
+    } else {
+      html += `<div class="invCell" data-slot="${i}"></div>`;
+    }
+  }
+  html += `</div>
+    <div class="sFooter box" id="invFooterMsg">Drag icons between cells to reorganize. Click an icon to use one.</div>
+    </div>`;
+  invScreen.innerHTML = html;
+  attachInventoryDragHandlers();
+  makeWindowDraggable(invScreen, 'invTitleBar');
+}
+function attachInventoryDragHandlers(){
+  const cells = invScreen.querySelectorAll('.invCell.filled');
+  cells.forEach(cellEl=>{
+    const slot = parseInt(cellEl.dataset.slot);
+    const hoverOcc = occupantAt(slot);
+    cellEl.addEventListener('mouseenter', (e)=>{
+      if(hoverOcc){
+        const it = itemInfo(hoverOcc);
+        invTooltip.innerHTML = `<b style="color:${it.color||'var(--gold)'};">${it.name}</b><br>${it.desc}<br><span style="opacity:0.75;">${it.status||''}</span>`;
+        invTooltip.style.display = 'block';
+        invTooltip.style.left = (e.clientX+16)+'px';
+        invTooltip.style.top = (e.clientY+16)+'px';
+      }
+    });
+    cellEl.addEventListener('mousemove', (e)=>{
+      invTooltip.style.left = (e.clientX+16)+'px';
+      invTooltip.style.top = (e.clientY+16)+'px';
+    });
+    cellEl.addEventListener('mouseleave', ()=>{
+      invTooltip.style.display = 'none';
+    });
+    cellEl.addEventListener('pointerdown', (e)=>{
+      const startSlot = parseInt(cellEl.dataset.slot);
+      const occ = occupantAt(startSlot);
+      if(!occ) return;
+      e.preventDefault();
+      const startX=e.clientX, startY=e.clientY;
+      let moved=false;
+      let lastHover=null;
+      try{ cellEl.setPointerCapture(e.pointerId); }catch(err){}
+      cellEl.classList.add('dragging');
+      function findCellUnder(cx,cy){
+        const el = document.elementFromPoint(cx,cy);
+        return el ? el.closest('.invCell') : null;
+      }
+      function onMove(ev){
+        const dx=ev.clientX-startX, dy=ev.clientY-startY;
+        if(Math.abs(dx)+Math.abs(dy)>6) moved=true;
+        if(lastHover) lastHover.classList.remove('dragover');
+        const cellUnder = findCellUnder(ev.clientX, ev.clientY);
+        if(cellUnder && cellUnder!==cellEl){ cellUnder.classList.add('dragover'); lastHover=cellUnder; }
+        else lastHover=null;
+      }
+      function onUp(ev){
+        cellEl.removeEventListener('pointermove', onMove);
+        cellEl.removeEventListener('pointerup', onUp);
+        cellEl.classList.remove('dragging');
+        if(lastHover) lastHover.classList.remove('dragover');
+        const cellUnder = findCellUnder(ev.clientX, ev.clientY);
+        if(!moved){
+          useInventoryItemAtSlot(startSlot);
+        } else if(cellUnder){
+          const toSlot = parseInt(cellUnder.dataset.slot);
+          if(!isNaN(toSlot) && toSlot!==startSlot){
+            moveOrSwapItem(occ, startSlot, toSlot);
+          }
+        }
+        renderInventoryGrid();
+      }
+      cellEl.addEventListener('pointermove', onMove);
+      cellEl.addEventListener('pointerup', onUp);
+    });
+  });
+}
+window.__ff1_closeInv = ()=> closeInventory();
+
+// ---------- SKILL TREE SCREEN ----------
+let skillFooterMsg = 'Spend Skill Points to unlock nodes outward from HERO. Earn 1 SP per level up.';
+function isSkillsOpen(){ return skillScreen.style.display==='flex'; }
+function openSkillScreen(){
+  if(isSkillsOpen()){ closeSkillScreen(); return; }
+  if(state!=='overworld') return;
+  skillFooterMsg = 'Spend Skill Points to unlock nodes outward from HERO. Earn 1 SP per level up.';
+  renderSkillScreen();
+  skillScreen.style.display='flex';
+  bringToFront(skillScreen);
+}
+function closeSkillScreen(){
+  skillScreen.style.display='none';
+  invTooltip.style.display='none';
+}
+function isNodeUnlocked(id){ return !!player.unlockedSkills[id]; }
+function canUnlockNode(treeKey, idx){
+  const node = skillTrees[treeKey].nodes[idx];
+  if(isNodeUnlocked(node.id)) return false;
+  if(player.skillPoints<1) return false;
+  if(player.level<node.reqLevel) return false;
+  if(idx>0 && !isNodeUnlocked(skillTrees[treeKey].nodes[idx-1].id)) return false;
+  return true;
+}
+function unlockNode(treeKey, idx){
+  if(!canUnlockNode(treeKey, idx)) return;
+  const node = skillTrees[treeKey].nodes[idx];
+  player.skillPoints--;
+  player.unlockedSkills[node.id]=true;
+  node.apply();
+  updateStatBar();
+  skillFooterMsg = `Unlocked "${node.name}" — ${node.desc}`;
+  renderSkillScreen();
+}
+function renderSkillScreen(){
+  let html = `<div class="invTitleBar" id="skillTitleBar">
+      <span>⚔ PASSIVES</span>
+      <button type="button" class="invCloseBtn" onclick="window.__ff1_closeSkills()">✕</button>
+    </div>
+    <div class="skillBody">
+    <div class="sSub">Skill Points available: <b style="color:var(--gold)">${player.skillPoints}</b> — hover a node for details.</div>
+    <div class="skillGrid">`;
+  html += `<div class="skillNode hub" style="grid-row:4; grid-column:4;">HERO</div>`;
+  for(const key in skillTrees){
+    const tree = skillTrees[key];
+    tree.nodes.forEach((node, idx)=>{
+      const p = tree.pos[idx];
+      const unlocked = isNodeUnlocked(node.id);
+      const available = canUnlockNode(key, idx);
+      let cls = 'skillNode';
+      let style = `grid-row:${p.r}; grid-column:${p.c};`;
+      if(unlocked){ cls+=' unlocked'; style+=`color:${tree.color}; border-color:${tree.color};`; }
+      else if(available){ cls+=' available'; style+=`color:${tree.color}; border-color:${tree.color};`; }
+      else { style+='border-color:#333;'; }
+      const lockNote = unlocked ? '✓' : (player.level<node.reqLevel ? `Lv${node.reqLevel}` : '');
+      html += `<div class="${cls}" style="${style}"
+        onclick="window.__ff1_unlockNode('${key}',${idx})"
+        onmouseenter="window.__ff1_hoverNode(event,'${key}',${idx})"
+        onmousemove="window.__ff1_moveTooltip(event)"
+        onmouseleave="window.__ff1_unhoverNode()"
+        ontouchstart="window.__ff1_hoverNode(event,'${key}',${idx})">
+        <div class="snName">${node.name}</div><div style="font-size:6px; opacity:0.8;">${lockNote}</div>
+      </div>`;
+    });
+  }
+  html += `</div>
+    <div class="sFooter box">${skillFooterMsg}</div>
+    </div>`;
+  skillScreen.innerHTML = html;
+  makeWindowDraggable(skillScreen, 'skillTitleBar');
+}
+function hoverNode(e, treeKey, idx){
+  const tree = skillTrees[treeKey];
+  const node = tree.nodes[idx];
+  const unlocked = isNodeUnlocked(node.id);
+  const statusLine = unlocked
+    ? `<span style="color:${tree.color};">Already learned</span>`
+    : (player.level<node.reqLevel
+        ? `<span style="color:var(--hplow);">Requires Level ${node.reqLevel}</span>`
+        : `Costs 1 Skill Point`);
+  invTooltip.innerHTML = `<span style="color:${tree.color}; font-weight:bold;">${tree.label} — ${node.name}</span><br>
+    ${node.desc}<br>${statusLine}`;
+  invTooltip.style.display = 'block';
+  invTooltip.style.left = (e.clientX+16)+'px';
+  invTooltip.style.top = (e.clientY+16)+'px';
+}
+function moveSkillTooltip(e){
+  invTooltip.style.left = (e.clientX+16)+'px';
+  invTooltip.style.top = (e.clientY+16)+'px';
+}
+function unhoverNode(){
+  invTooltip.style.display = 'none';
+}
+window.__ff1_hoverNode = (e, key, idx)=> hoverNode(e, key, idx);
+window.__ff1_moveTooltip = (e)=> moveSkillTooltip(e);
+window.__ff1_unhoverNode = ()=> unhoverNode();
+window.__ff1_unlockNode = (key, idx)=> unlockNode(key, idx);
+window.__ff1_closeSkills = ()=> closeSkillScreen();
+
+
+function openInn(){
+  state='dialog';
+  showDialogue(
+    `<b style="color:var(--gold)">INN</b><br>Rest here and recover your strength for <b>10 G</b>?`,
+    {buttons:[
+      {label:'REST (10G)', action:()=>{
+        if(player.gold>=10){
+          player.gold-=10; player.hp=player.maxhp; player.mp=player.maxmp;
+          updateStatBar();
+          showDialogue('You feel fully restored!', {buttons:[{label:'OK', action:()=>{hideDialogue(); state='overworld';}}]});
+        } else {
+          showDialogue("You don't have enough gold.", {buttons:[{label:'OK', action:()=>{hideDialogue(); state='overworld';}}]});
+        }
+      }},
+      {label:'LEAVE', action:()=>{ hideDialogue(); state='overworld'; }}
+    ]}
+  );
+}
+function openShop(){
+  state='dialog';
+  renderShop();
+}
+function buyGear(id){
+  const def = EQUIP_DEFS[id];
+  if(player.gold < def.price){ renderShop(`Not enough gold for the ${def.name}.`); return; }
+  if(!addGearToInventory(id)){ renderShop('Your inventory is full!'); return; }
+  player.gold -= def.price;
+  updateStatBar();
+  renderShop(`Bought ${def.name}! Equip it from your inventory (I).`);
+}
+function shopItemDetails(id){
+  if(id==='potion') return {name:'Potion', desc:'Heals 25 HP.', price:15, color:RARITY_COLORS.common};
+  if(id==='ether') return {name:'Ether', desc:'Restores 10 MP.', price:20, color:RARITY_COLORS.common};
+  const d = EQUIP_DEFS[id];
+  const type = d.slot.charAt(0).toUpperCase()+d.slot.slice(1);
+  const rc = rarityColorOf(id);
+  return {name:d.name, color:rc, desc:`<span style="color:${rc}">${rarityLabel(d.rarity)}</span> <span style="color:#9fb3ff">${type}</span><br>${d.desc}`, price:d.price};
+}
+window.__ff1_shopHover = (e, id)=>{
+  const it = shopItemDetails(id);
+  invTooltip.innerHTML = `<b style="color:${it.color||'var(--gold)'};">${it.name}</b><br>${it.desc}<br><span style="opacity:0.75;">${it.price} G</span>`;
+  invTooltip.style.display = 'block';
+  invTooltip.style.left = (e.clientX+16)+'px';
+  invTooltip.style.top = (e.clientY+16)+'px';
+};
+window.__ff1_shopUnhover = ()=>{ invTooltip.style.display='none'; };
+function renderShop(note){
+  const noteHtml = note ? `<div style="color:var(--gold); margin-top:4px;">${note}</div>` : '';
+  function shopBtn(onclick, id, iconHtml, price){
+    const afford = player.gold >= price;
+    const borderColor = EQUIP_DEFS[id] ? rarityColorOf(id) : RARITY_COLORS.common;
+    const coin = `<svg width="8" height="8" viewBox="0 0 24 24" style="vertical-align:-1px;">
+      <circle cx="12" cy="12" r="10" fill="#ffd54a" stroke="#b8860b" stroke-width="2"/>
+      <circle cx="12" cy="12" r="5.5" fill="none" stroke="#b8860b" stroke-width="1.5"/>
+    </svg>`;
+    return `<button class="shopBtn" ${afford?'':'disabled'} style="border-color:${borderColor};" onclick="${onclick}"
+      onmouseenter="window.__ff1_shopHover(event,'${id}')"
+      onmousemove="window.__ff1_moveTooltip(event)"
+      onmouseleave="window.__ff1_shopUnhover()">
+      <span class="shopIcon">${iconHtml}</span>
+      <span class="shopPrice">${coin} ${price} G</span>
+    </button>`;
+  }
+  function shopSection(label, buttonsHtml){
+    return `<div class="shopSection">
+      <div class="shopSectionLabel">${label}</div>
+      <div class="shopGrid">${buttonsHtml}</div>
+    </div>`;
+  }
+  function gearButtonsFor(slot){
+    return Object.keys(EQUIP_DEFS)
+      .filter(id=>EQUIP_DEFS[id].slot===slot && EQUIP_DEFS[id].shop!==false)
+      .map(id=> shopBtn(`window.__ff1_buyGear('${id}')`, id, gearIconSVG(id), EQUIP_DEFS[id].price))
+      .join('');
+  }
+  showDialogue(
+    `<b style="color:var(--gold)">SHOP</b> — Gold: ${player.gold}
+    ${shopSection('CONSUMABLES',
+      shopBtn(`window.__ff1_buyPotion()`, 'potion', consumableIconSVG('potion'), 15) +
+      shopBtn(`window.__ff1_buyEther()`, 'ether', consumableIconSVG('ether'), 20)
+    )}
+    ${shopSection('WEAPONS', gearButtonsFor('weapon'))}
+    ${shopSection('ARMOR', gearButtonsFor('armor'))}
+    ${shopSection('ACCESSORIES', gearButtonsFor('accessory'))}
+    ${noteHtml}`,
+    {buttons:[
+      {label:'SELL ITEMS', action:()=> renderSellShop()},
+      {label:'LEAVE', action:()=>{ hideDialogue(); state='overworld'; }}
+    ]}
+  );
+}
+window.__ff1_buyGear = (id)=> buyGear(id);
+window.__ff1_buyPotion = ()=>{
+  if(player.gold>=15){ player.gold-=15; player.potions++; updateStatBar(); renderShop('Bought a Potion!'); }
+  else renderShop('Not enough gold.');
+};
+window.__ff1_buyEther = ()=>{
+  if(player.gold>=20){ player.gold-=20; player.ethers++; updateStatBar(); renderShop('Bought an Ether!'); }
+  else renderShop('Not enough gold.');
+};
+
+// ---------- SELLING ----------
+const SELL_VALUES = { common:8, uncommon:25, rare:60, epic:130, legendary:250, relic:500 };
+function sellValueOf(rarity){ return SELL_VALUES[rarity] || 5; }
+function renderSellShop(note){
+  const noteHtml = note ? `<div style="color:var(--gold); margin-top:4px;">${note}</div>` : '';
+  const coin = `<svg width="8" height="8" viewBox="0 0 24 24" style="vertical-align:-1px;">
+    <circle cx="12" cy="12" r="10" fill="#ffd54a" stroke="#b8860b" stroke-width="2"/>
+    <circle cx="12" cy="12" r="5.5" fill="none" stroke="#b8860b" stroke-width="1.5"/>
+  </svg>`;
+  function sellBtn(key, iconHtml, value, qtyLabel, borderColor){
+    return `<button class="shopBtn" style="border-color:${borderColor};" onclick="window.__ff1_sellItem('${key}')"
+      onmouseenter="window.__ff1_sellHover(event,'${key}')"
+      onmousemove="window.__ff1_moveTooltip(event)"
+      onmouseleave="window.__ff1_shopUnhover()">
+      <span class="shopIcon">${iconHtml}</span>
+      ${qtyLabel ? `<span style="font-size:7px; opacity:0.8;">${qtyLabel}</span>` : ''}
+      <span class="shopPrice">${coin} ${value} G</span>
+    </button>`;
+  }
+  let btns = '';
+  if(player.potions>0) btns += sellBtn('potion', consumableIconSVG('potion'), SELL_VALUES.common, `x${player.potions}`, RARITY_COLORS.common);
+  if(player.ethers>0) btns += sellBtn('ether', consumableIconSVG('ether'), SELL_VALUES.common, `x${player.ethers}`, RARITY_COLORS.common);
+  player.gear.forEach(g=>{
+    const d = EQUIP_DEFS[g.id];
+    const equipped = isEquipped(g.uid);
+    const isQuest = d.slot==='quest';
+    btns += sellBtn('g'+g.uid, gearIconSVG(g.id), isQuest ? '—' : sellValueOf(d.rarity), isQuest ? 'QUEST' : (equipped?'EQUIPPED':''), rarityColorOf(g.id));
+  });
+  showDialogue(
+    `<b style="color:var(--gold)">SELL ITEMS</b> — Gold: ${player.gold}<br>
+    <span style="font-size:9px; opacity:0.8;">Click an item to sell it. Sell prices are based on rarity.</span>
+    <div class="shopGrid" style="margin-top:6px;">${btns || '<span style="opacity:0.6; font-size:9px;">You have nothing to sell.</span>'}</div>${noteHtml}`,
+    {buttons:[
+      {label:'BUY ITEMS', action:()=> renderShop()},
+      {label:'LEAVE', action:()=>{ hideDialogue(); state='overworld'; }}
+    ]}
+  );
+}
+window.__ff1_sellItem = (key)=>{
+  if(key==='potion'){
+    if(player.potions>0){ player.potions--; player.gold += SELL_VALUES.common; updateStatBar(); renderSellShop(`Sold a Potion for ${SELL_VALUES.common} G!`); }
+    return;
+  }
+  if(key==='ether'){
+    if(player.ethers>0){ player.ethers--; player.gold += SELL_VALUES.common; updateStatBar(); renderSellShop(`Sold an Ether for ${SELL_VALUES.common} G!`); }
+    return;
+  }
+  const uid = parseInt(key.slice(1));
+  const piece = gearByUid(uid);
+  if(!piece) return;
+  if(EQUIP_DEFS[piece.id].slot==='quest'){ renderSellShop('Quest items cannot be sold!'); return; }
+  if(isEquipped(uid)){ renderSellShop('Unequip that item before selling it!'); return; }
+  const d = EQUIP_DEFS[piece.id];
+  const value = sellValueOf(d.rarity);
+  player.gear = player.gear.filter(g=>g.uid!==uid);
+  player.gold += value;
+  updateStatBar();
+  renderSellShop(`Sold ${d.name} for ${value} G!`);
+};
+window.__ff1_sellHover = (e, key)=>{
+  let html;
+  if(key==='potion' || key==='ether'){
+    const name = key==='potion' ? 'Potion' : 'Ether';
+    html = `<b style="color:${RARITY_COLORS.common};">${name}</b><br><span style="color:${RARITY_COLORS.common}">Common</span> <span style="color:#9fb3ff">Consumable</span><br><span style="opacity:0.75;">Sell: ${SELL_VALUES.common} G</span>`;
+  } else {
+    const uid = parseInt(key.slice(1));
+    const piece = gearByUid(uid);
+    if(!piece) return;
+    const d = EQUIP_DEFS[piece.id];
+    const rc = rarityColorOf(piece.id);
+    const isQuest = d.slot==='quest';
+    const type = isQuest ? 'Quest Item' : d.slot.charAt(0).toUpperCase()+d.slot.slice(1);
+    const sellLine = isQuest
+      ? `<span style="color:var(--hplow);">Quest item — cannot be sold</span>`
+      : (isEquipped(uid)
+        ? `<span style="color:var(--hplow);">Equipped — unequip to sell</span>`
+        : `<span style="opacity:0.75;">Sell: ${sellValueOf(d.rarity)} G</span>`);
+    html = `<b style="color:${rc};">${d.name}</b><br><span style="color:${rc}">${rarityLabel(d.rarity)}</span> <span style="color:#9fb3ff">${type}</span><br>${d.desc}<br>${sellLine}`;
+  }
+  invTooltip.innerHTML = html;
+  invTooltip.style.display = 'block';
+  invTooltip.style.left = (e.clientX+16)+'px';
+  invTooltip.style.top = (e.clientY+16)+'px';
+};
+
+// ---------- BATTLE ----------
+function startRandomBattle(){
+  const table = player.zone==='desert' ? desertEnemyTypes : enemyTypes;
+  const et = table[Math.floor(Math.random()*table.length)];
+  beginBattle(et, false);
+}
+function enterBoss(){
+  if(player.bossDefeated){
+    showDialogue('The castle hall is silent. You have already claimed victory.', {buttons:[{label:'OK', action:()=>{hideDialogue(); state='overworld';}}]});
+    state='dialog';
+    return;
+  }
+  beginBattle(boss, true);
+}
+function beginBattle(template, isBoss){
+  state='battle';
+  closeInventory();
+  closeCharSheet();
+  closeSkillScreen();
+  statBar.style.display='none';
+  playerStatus.style.display='block';
+  updatePlayerStatusPanel();
+  battle = {
+    enemy: {...template, maxhp: template.hp},
+    isBoss,
+    turn:'player',
+    log: isBoss ? `The ${template.name} blocks your path!` : `A wild ${template.name} appears!`,
+    over:false,
+    shakeT:0
+  };
+  renderBattleMenu();
+}
+
+function renderBattleMenu(disabled, view){
+  view = view || 'main';
+  const d = disabled?'disabled':'';
+  let buttonsHtml = '';
+  if(view==='main'){
+    const hasAbility = player.hasCleave || player.hasAimedShot;
+    buttonsHtml = `
+      <button ${d} onclick="window.__ff1_attack()">ATTACK</button>
+      <button ${d} onclick="window.__ff1_openMagic()">MAGIC</button>
+      ${hasAbility ? `<button ${d} onclick="window.__ff1_openAbility()">ABILITY</button>` : ''}
+      <button ${d} onclick="window.__ff1_item()">POTION x${player.potions}</button>
+      <button ${d} onclick="window.__ff1_run()">${battle.isBoss?'RUN (n/a)':'RUN'}</button>
+    `;
+  } else if(view==='magic'){
+    buttonsHtml = `
+      <button ${d} onclick="window.__ff1_fire()">FIRE (3MP)</button>
+      ${player.hasIce ? `<button ${d} onclick="window.__ff1_ice()">ICE (4MP)</button>` : ''}
+      ${player.hasThunder ? `<button ${d} onclick="window.__ff1_thunder()">THUNDER (6MP)</button>` : ''}
+      ${player.hasCure ? `<button ${d} onclick="window.__ff1_cure()">CURE (4MP)</button>` : ''}
+      <button ${d} onclick="window.__ff1_backMain()">BACK</button>
+    `;
+  } else if(view==='ability'){
+    buttonsHtml = `
+      ${player.hasCleave ? `<button ${d} onclick="window.__ff1_cleave()">CLEAVE</button>` : ''}
+      ${player.hasAimedShot ? `<button ${d} onclick="window.__ff1_aimedshot()">AIMED SHOT</button>` : ''}
+      <button ${d} onclick="window.__ff1_backMain()">BACK</button>
+    `;
+  }
+  showMenu(`
+    <div class="box" style="font-size:11px; min-height:20px;">${battle.log}</div>
+    <div class="row">${buttonsHtml}</div>
+  `);
+}
+
+function rand(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
+
+function playerAttackAction(){
+  const e = battle.enemy;
+  const dmg = Math.max(1, player.atk + rand(-2,2) - e.def);
+  e.hp -= dmg;
+  battle.log = `${player.name} attacks! ${e.name} takes ${dmg} damage.`;
+  battle.shakeT = 8;
+  afterPlayerAction();
+}
+function castDamageSpell(name, cost, dmgBase, dmgVar){
+  if(player.mp<cost){
+    battle.log = 'Not enough MP!';
+    renderBattleMenu(false,'magic');
+    return;
+  }
+  player.mp-=cost;
+  const e = battle.enemy;
+  const dmg = Math.max(2, player.atk + dmgBase - e.def + rand(-dmgVar,dmgVar));
+  e.hp -= dmg;
+  updateStatBar();
+  battle.log = `${player.name} casts ${name}! ${e.name} takes ${dmg} damage.`;
+  battle.shakeT = 8;
+  afterPlayerAction();
+}
+function useFreeAbility(name, dmgFn){
+  const e = battle.enemy;
+  const dmg = dmgFn(e);
+  e.hp -= dmg;
+  battle.log = `${player.name} uses ${name}! ${e.name} takes ${dmg} damage.`;
+  battle.shakeT = 8;
+  afterPlayerAction();
+}
+function playerCureAction(){
+  if(player.mp<4){
+    battle.log = 'Not enough MP!';
+    renderBattleMenu(false,'magic');
+    return;
+  }
+  player.mp-=4;
+  const heal = 25 + player.level*2 + player.cureHealBonus;
+  player.hp = Math.min(player.maxhp, player.hp+heal);
+  updateStatBar();
+  battle.log = `${player.name} casts CURE and recovers ${heal} HP!`;
+  afterPlayerAction();
+}
+function playerItemAction(){
+  if(player.potions<=0){
+    battle.log='No potions left!';
+    renderBattleMenu();
+    return;
+  }
+  player.potions--;
+  const heal = 25 + player.potionHealBonus;
+  player.hp = Math.min(player.maxhp, player.hp+heal);
+  updateStatBar();
+  battle.log = `${player.name} drinks a potion and recovers ${heal} HP!`;
+  afterPlayerAction(true);
+}
+function playerRunAction(){
+  if(battle.isBoss){
+    battle.log = "You can't run from this battle!";
+    renderBattleMenu();
+    return;
+  }
+  if(Math.random()<0.7){
+    battle.log = 'Got away safely!';
+    renderBattleMenu(true);
+    setTimeout(()=>{ endBattle(); }, 700);
+    return;
+  } else {
+    battle.log = "Couldn't escape!";
+    afterPlayerAction(true);
+  }
+}
+
+function afterPlayerAction(skipDeathCheckDelay){
+  renderBattleMenu(true);
+  const e = battle.enemy;
+  if(e.hp<=0){
+    e.hp=0;
+    setTimeout(()=>victory(), 600);
+    return;
+  }
+  setTimeout(()=>enemyTurn(), 700);
+}
+
+function enemyTurn(){
+  const e = battle.enemy;
+  const dmg = Math.max(1, e.atk + rand(-2,2) - player.def);
+  player.hp -= dmg;
+  updateStatBar();
+  battle.log = `${e.name} attacks! You take ${dmg} damage.`;
+  battle.shakeT = 8;
+  if(player.hp<=0){
+    player.hp=0;
+    updateStatBar();
+    setTimeout(()=>defeat(), 700);
+    return;
+  }
+  renderBattleMenu();
+}
+
+function victory(){
+  const e = battle.enemy;
+  let goldGain = e.gold, expGain = e.exp;
+  let text;
+  if(battle.isBoss){
+    player.bossDefeated = true;
+    text = `You have vanquished the ${e.name}!!<br>The realm is saved. Thank you for playing!`;
+    if(addGearToInventory('green_dragons_heart')){
+      text += `<br><b style="color:${RARITY_COLORS.relic}">You carve out the Green Dragon's Heart — a Relic Quest Item!</b>`;
+    }
+    if(addGearToInventory('crown_of_chrone')){
+      text += `<br><b style="color:${RARITY_COLORS.relic}">The Dragon King's Crown (Relic) has been added to your inventory!</b>`;
+    }
+  } else {
+    player.exp += expGain;
+    player.gold += goldGain;
+    text = `You defeated the ${e.name}!<br>Gained ${expGain} EXP and ${goldGain} Gold.`;
+    let leveled=false;
+    while(player.exp>=player.expNext){
+      player.exp -= player.expNext;
+      player.level++;
+      player.maxhp += 8; player.maxmp += 3;
+      player.atk += 2; player.def += 1;
+      player.hp = player.maxhp; player.mp = player.maxmp;
+      player.expNext = Math.floor(player.expNext*1.35)+10;
+      player.skillPoints += 1;
+      leveled=true;
+    }
+    if(leveled) text += `<br><b style="color:var(--gold)">LEVEL UP! Now LV ${player.level}! (+1 Skill Point)</b>`;
+  }
+  updateStatBar();
+  hideMenu();
+  state='dialog';
+  showDialogue(text, {buttons:[{label:'OK', action:()=>{ hideDialogue(); endBattle(); }}]});
+}
+
+function defeat(){
+  hideMenu();
+  state='dialog';
+  const lost = Math.floor(player.gold/2);
+  player.gold -= lost;
+  showDialogue(
+    `You were defeated...<br>You wake up back in town, having lost ${lost} gold.`,
+    {buttons:[{label:'CONTINUE', action:()=>{
+      player.hp = player.maxhp; player.mp = player.maxmp;
+      setActiveZone('overworld');
+      player.x=5; player.y=8;
+      updateStatBar();
+      hideDialogue();
+      endBattle();
+    }}]}
+  );
+}
+
+function endBattle(){
+  battle=null;
+  hideMenu();
+  state='overworld';
+  statBar.style.display='flex';
+  playerStatus.style.display='none';
+  enemyStatus.innerHTML='';
+}
+
+window.__ff1_attack = ()=>{ if(battle && !battle.locked){ playerAttackAction(); } };
+window.__ff1_openMagic = ()=>{ if(battle){ renderBattleMenu(false,'magic'); } };
+window.__ff1_openAbility = ()=>{ if(battle){ renderBattleMenu(false,'ability'); } };
+window.__ff1_backMain = ()=>{ if(battle){ renderBattleMenu(false,'main'); } };
+window.__ff1_fire = ()=>{ if(battle){ castDamageSpell('FIRE',3,8,2); } };
+window.__ff1_ice = ()=>{ if(battle){ castDamageSpell('ICE',4,13,2); } };
+window.__ff1_thunder = ()=>{ if(battle){ castDamageSpell('THUNDER',6,20,3); } };
+window.__ff1_cure = ()=>{ if(battle){ playerCureAction(); } };
+window.__ff1_cleave = ()=>{ if(battle){ useFreeAbility('CLEAVE', e=>Math.max(1, Math.round(player.atk*1.6) - e.def + rand(-2,2))); } };
+window.__ff1_aimedshot = ()=>{ if(battle){ useFreeAbility('AIMED SHOT', e=>Math.max(2, player.atk + 8 - Math.floor(e.def/2) + rand(-2,2))); } };
+window.__ff1_item = ()=>{ if(battle){ playerItemAction(); } };
+window.__ff1_run = ()=>{ if(battle){ playerRunAction(); } };
+
+// ---------- BATTLE RENDER ----------
+function drawEnemySprite(cx,cy,e,shakeOffset){
+  ctx.save();
+  ctx.translate(shakeOffset,0);
+  ctx.fillStyle=e.color;
+  const s = e===boss||e.name==='GREEN DRAGON' ? 70 : 46;
+  if(e.shape==='blob'){
+    ctx.beginPath();
+    ctx.ellipse(cx,cy,s*0.6,s*0.45,0,0,Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle='#000';
+    ctx.fillRect(cx-10,cy-6,4,6);
+    ctx.fillRect(cx+6,cy-6,4,6);
+  } else if(e.shape==='bat'){
+    ctx.beginPath();
+    ctx.moveTo(cx,cy-10);
+    ctx.lineTo(cx-s*0.7,cy+s*0.3);
+    ctx.lineTo(cx-10,cy);
+    ctx.lineTo(cx,cy+s*0.35);
+    ctx.lineTo(cx+10,cy);
+    ctx.lineTo(cx+s*0.7,cy+s*0.3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle='#fff';
+    ctx.fillRect(cx-6,cy-4,4,4);
+    ctx.fillRect(cx+2,cy-4,4,4);
+  } else if(e.shape==='gob'){
+    ctx.fillRect(cx-s*0.35,cy-s*0.4,s*0.7,s*0.75);
+    ctx.fillStyle='#3a2a1a';
+    ctx.fillRect(cx-s*0.35,cy+s*0.28,s*0.7,s*0.2);
+    ctx.fillStyle='#fff';
+    ctx.fillRect(cx-10,cy-s*0.2,5,5);
+    ctx.fillRect(cx+5,cy-s*0.2,5,5);
+  } else if(e.shape==='wolf'){
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.5,cy+s*0.3);
+    ctx.lineTo(cx-s*0.5,cy-s*0.1);
+    ctx.lineTo(cx-s*0.15,cy-s*0.35);
+    ctx.lineTo(cx+s*0.5,cy-s*0.1);
+    ctx.lineTo(cx+s*0.5,cy+s*0.3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle='#e2e8f0';
+    ctx.fillRect(cx-8,cy-4,16,10);
+    ctx.fillStyle='#111';
+    ctx.fillRect(cx-6,cy-s*0.02,4,4);
+    ctx.fillRect(cx+2,cy-s*0.02,4,4);
+  } else if(e.shape==='dragon'){
+    ctx.beginPath();
+    ctx.ellipse(cx,cy,s*0.65,s*0.5,0,0,Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle='#1e5c12';
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.6,cy-s*0.1);
+    ctx.lineTo(cx-s*0.95,cy-s*0.45);
+    ctx.lineTo(cx-s*0.5,cy-s*0.3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.6,cy-s*0.1);
+    ctx.lineTo(cx+s*0.95,cy-s*0.45);
+    ctx.lineTo(cx+s*0.5,cy-s*0.3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle='#ff3b3b';
+    ctx.fillRect(cx-14,cy-8,6,6);
+    ctx.fillRect(cx+8,cy-8,6,6);
+  }
+  ctx.restore();
+}
+
+function drawBattle(){
+  const desert = player.zone==='desert';
+  // backdrop
+  const grad = ctx.createLinearGradient(0,0,0,canvas.height);
+  if(desert){
+    grad.addColorStop(0,'#7a4a1a');
+    grad.addColorStop(0.6,'#3a2410');
+    grad.addColorStop(1,'#150c04');
+  } else {
+    grad.addColorStop(0,'#1a1a4a');
+    grad.addColorStop(1,'#050514');
+  }
+  ctx.fillStyle=grad;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  // ground
+  ctx.fillStyle= desert ? '#b89454' : '#241a10';
+  ctx.fillRect(0,340,canvas.width,140);
+  ctx.strokeStyle= desert ? '#9a7a3e' : '#3a2a18';
+  for(let i=0;i<8;i++){
+    ctx.beginPath();
+    ctx.moveTo(i*90-40,480);
+    ctx.lineTo(i*90+40,340);
+    ctx.stroke();
+  }
+  if(battle){
+    const e = battle.enemy;
+    let shakeOffset=0;
+    if(battle.shakeT>0){
+      shakeOffset = (battle.shakeT%2===0?4:-4);
+      battle.shakeT--;
+    }
+    drawEnemySprite(canvas.width/2, 190, e, shakeOffset);
+
+    // enemy status panel
+    const pct = Math.max(0,e.hp)/e.maxhp;
+    enemyStatus.innerHTML = `<div class="box"><div class="enemyName">${e.name}</div>
+      <div class="hpbar-outer"><div class="hpbar-inner" style="width:${pct*100}%; background:${pct<0.25?'var(--hplow)':'var(--hp)'}"></div></div></div>`;
+
+    // player sprite bottom-left facing right
+    drawPlayerSprite(70,300);
+  } else {
+    enemyStatus.innerHTML='';
+  }
+}
+
+// ---------- MAIN LOOP ----------
+function frame(){
+  animTimer++;
+  const standTile = tileAt(player.x, player.y);
+  const canInteract = state==='overworld' && ((standTile===6 || standTile===7 || standTile===8) || adjacentToVine());
+  btnInteractEl.classList.toggle('canInteract', canInteract);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(state==='overworld' || (state==='dialog' && battle===null)){
+    drawOverworld();
+  }
+  if(state==='title'){
+    ctx.fillStyle='#000';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+  }
+  if(state==='battle'){
+    drawBattle();
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// title screen -> start button reveals the welcome hint dialogue
+const heroColorChoices = [
+  {name:'Blue', hex:'#2b3a8f'},
+  {name:'Crimson', hex:'#8f2b2b'},
+  {name:'Forest', hex:'#2b7a3a'},
+  {name:'Violet', hex:'#6a2b8f'},
+  {name:'Slate', hex:'#3a4a52'},
+  {name:'Amber', hex:'#8f6a2b'}
+];
+let selectedHeroColor = heroColorChoices[0].hex;
+
+const hairColorChoices = [
+  {name:'Brown', hex:'#3a2418'},
+  {name:'Black', hex:'#1a1a1a'},
+  {name:'Blonde', hex:'#d9b45c'},
+  {name:'Auburn', hex:'#8a3a1f'},
+  {name:'White', hex:'#e8e8e8'},
+  {name:'Blue', hex:'#3a6ea5'}
+];
+let selectedHairColor = hairColorChoices[0].hex;
+let heroHairColor = hairColorChoices[0].hex;
+const hairStyles = [
+  {id:'bald', name:'Bald'},
+  {id:'spiky', name:'Spiky'},
+  {id:'short', name:'Short'},
+  {id:'long', name:'Long'},
+  {id:'mohawk', name:'Mohawk'}
+];
+// shape specs are in head-relative coordinates shared by both the SVG preview and the canvas sprite
+const hairShapes = {
+  bald: [],
+  spiky: [
+    {type:'poly', pts:[[11.5,4],[13,0],[14.5,4]]},
+    {type:'poly', pts:[[14.5,4],[16,0],[17.5,4]]},
+    {type:'poly', pts:[[17.5,4],[19,0],[20.5,4]]}
+  ],
+  short: [
+    {type:'rect', x:10, y:2, w:12, h:4}
+  ],
+  long: [
+    {type:'rect', x:10, y:2, w:12, h:4},
+    {type:'rect', x:8, y:5, w:3, h:11},
+    {type:'rect', x:21, y:5, w:3, h:11}
+  ],
+  mohawk: [
+    {type:'rect', x:14, y:0, w:4, h:5}
+  ]
+};
+let selectedHairStyle = hairStyles[0].id;
+let heroHairStyle = hairStyles[0].id;
+
+function hairSvgMarkup(styleId, color){
+  const shapes = hairShapes[styleId] || [];
+  return shapes.map(s=>{
+    if(s.type==='rect') return `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" fill="${color}"/>`;
+    if(s.type==='poly') return `<polygon points="${s.pts.map(p=>p.join(',')).join(' ')}" fill="${color}"/>`;
+    return '';
+  }).join('');
+}
+function drawHairCanvas(styleId, color, px, py, bob){
+  const shapes = hairShapes[styleId] || [];
+  ctx.fillStyle = color;
+  shapes.forEach(s=>{
+    if(s.type==='rect'){
+      ctx.fillRect(px+s.x, py+s.y+bob, s.w, s.h);
+    } else if(s.type==='poly'){
+      ctx.beginPath();
+      s.pts.forEach((p,i)=>{
+        if(i===0) ctx.moveTo(px+p[0], py+p[1]+bob);
+        else ctx.lineTo(px+p[0], py+p[1]+bob);
+      });
+      ctx.closePath();
+      ctx.fill();
+    }
+  });
+}
+
+function drawCharPreview(){
+  const svg = document.getElementById('charPreviewSvg');
+  if(!svg) return;
+  svg.innerHTML = `
+    <rect x="11" y="4" width="10" height="8" fill="#f4c98a"/>
+    <rect x="8" y="12" width="16" height="12" fill="${selectedHeroColor}"/>
+    <rect x="9" y="24" width="6" height="6" fill="#8a5a2c"/>
+    <rect x="17" y="24" width="6" height="6" fill="#8a5a2c"/>
+    ${hairSvgMarkup(selectedHairStyle, selectedHairColor)}
+  `;
+}
+function renderCharColorSwatches(){
+  const row = document.getElementById('charColorRow');
+  row.innerHTML = heroColorChoices.map(c=>`
+    <div class="colorSwatch${c.hex===selectedHeroColor?' selected':''}" style="background:${c.hex};" title="${c.name}" onclick="window.__ff1_pickColor('${c.hex}')"></div>
+  `).join('');
+}
+function renderHairColorSwatches(){
+  const row = document.getElementById('charHairColorRow');
+  row.innerHTML = hairColorChoices.map(c=>`
+    <div class="colorSwatch${c.hex===selectedHairColor?' selected':''}" style="background:${c.hex};" title="${c.name}" onclick="window.__ff1_pickHairColor('${c.hex}')"></div>
+  `).join('');
+}
+function pickHairColor(hex){
+  selectedHairColor = hex;
+  renderHairColorSwatches();
+  drawCharPreview();
+}
+window.__ff1_pickHairColor = (hex)=> pickHairColor(hex);
+function renderHairOptions(){
+  const row = document.getElementById('charHairRow');
+  row.innerHTML = hairStyles.map(h=>`
+    <button type="button" class="hairOption${h.id===selectedHairStyle?' selected':''}" onclick="window.__ff1_pickHair('${h.id}')">${h.name}</button>
+  `).join('');
+}
+function pickHeroColor(hex){
+  selectedHeroColor = hex;
+  renderCharColorSwatches();
+  drawCharPreview();
+}
+function pickHairStyle(id){
+  selectedHairStyle = id;
+  renderHairOptions();
+  drawCharPreview();
+}
+window.__ff1_pickColor = (hex)=> pickHeroColor(hex);
+window.__ff1_pickHair = (id)=> pickHairStyle(id);
+
+function showCharScreen(){
+  titleScreen.style.display='none';
+  const nameInput = document.getElementById('charNameInput');
+  nameInput.value = 'HERO';
+  renderCharColorSwatches();
+  renderHairOptions();
+  renderHairColorSwatches();
+  drawCharPreview();
+  charScreen.style.display='flex';
+  setTimeout(()=>{ nameInput.focus(); nameInput.select(); }, 50);
+}
+function confirmCharacter(){
+  const nameInput = document.getElementById('charNameInput');
+  let name = (nameInput.value||'').trim().toUpperCase();
+  if(!name) name = 'HERO';
+  player.name = name;
+  heroTunicColor = selectedHeroColor;
+  heroHairStyle = selectedHairStyle;
+  heroHairColor = selectedHairColor;
+  charScreen.style.display='none';
+  gameStarted = true;
+  persistSave();
+  startGame();
+}
+window.__ff1_confirmCharacter = confirmCharacter;
+
+// ---------- SAVE / LOAD ----------
+const SAVE_KEY = 'dragonHeartSave';
+// migrate saves from the previous game name
+try{
+  const old = localStorage.getItem('kingdomChroneSave');
+  if(old && !localStorage.getItem(SAVE_KEY)){
+    localStorage.setItem(SAVE_KEY, old);
+    localStorage.removeItem('kingdomChroneSave');
+  }
+}catch(err){}
+let gameStarted = false;
+function serializeSave(){
+  return JSON.stringify({
+    v:1,
+    player: player,
+    heroTunicColor, heroHairStyle, heroHairColor,
+    nextGearUid
+  });
+}
+function persistSave(){
+  try{
+    if(!gameStarted) return false;
+    localStorage.setItem(SAVE_KEY, serializeSave());
+    return true;
+  }catch(err){
+    return false;
+  }
+}
+function loadSaveData(){
+  try{
+    const s = localStorage.getItem(SAVE_KEY);
+    return s ? JSON.parse(s) : null;
+  }catch(err){
+    return null;
+  }
+}
+function applySave(data){
+  Object.assign(player, data.player);
+  // ensure nested structures exist even from older saves
+  player.itemSlots = data.player.itemSlots || {potion:0, ether:1};
+  player.gear = data.player.gear || [];
+  player.equipped = data.player.equipped || {weapon:null, armor:null, accessory:null};
+  player.unlockedSkills = data.player.unlockedSkills || {};
+  heroTunicColor = data.heroTunicColor || heroTunicColor;
+  heroHairStyle = data.heroHairStyle || heroHairStyle;
+  heroHairColor = data.heroHairColor || heroHairColor;
+  nextGearUid = data.nextGearUid || nextGearUid;
+  player.zone = data.player.zone || 'overworld';
+  player.vineDestroyed = !!data.player.vineDestroyed;
+  applyVineState();
+  setActiveZone(player.zone);
+}
+function continueGame(){
+  const data = loadSaveData();
+  if(!data) return;
+  applySave(data);
+  gameStarted = true;
+  titleScreen.style.display='none';
+  updateStatBar();
+  state='overworld';
+}
+window.__ff1_continueGame = continueGame;
+function manualSave(){
+  if(state!=='overworld') return;
+  const ok = persistSave();
+  state='dialog';
+  showDialogue(
+    ok ? `<b style="color:var(--gold)">GAME SAVED!</b><br>Your progress is stored in this browser. The game also auto-saves as you play.<br>Use EXPORT CODE to back up your save or move it to another device.`
+       : `<b style="color:var(--hplow)">BROWSER SAVING UNAVAILABLE</b><br>This environment doesn't allow browser storage — but you can still use EXPORT CODE to copy your save, and IMPORT SAVE on the title screen to restore it.`,
+    {buttons:[
+      {label:'EXPORT CODE', action:()=> showExportDialog()},
+      {label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}
+    ]}
+  );
+}
+// show CONTINUE on the title screen if a save exists
+if(loadSaveData()){
+  document.getElementById('btnContinue').style.display='inline-block';
+}
+
+// ---------- EXPORT / IMPORT SAVE CODES ----------
+function encodeSaveCode(){
+  return btoa(unescape(encodeURIComponent(serializeSave())));
+}
+function decodeSaveCode(code){
+  try{
+    return JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
+  }catch(err){
+    return null;
+  }
+}
+function showExportDialog(){
+  state='dialog';
+  const code = encodeSaveCode();
+  showDialogue(
+    `<b style="color:var(--gold)">EXPORT SAVE CODE</b><br>
+    Copy this code and keep it somewhere safe. Paste it into IMPORT SAVE on the title screen (on any device) to restore your progress.<br>
+    <textarea id="exportCodeBox" readonly style="width:100%; height:56px; margin-top:6px; font-family:'Courier New',monospace; font-size:9px; background:#0a1440; color:var(--text); border:2px solid var(--border); padding:5px; resize:none;">${code}</textarea>
+    <span id="copyStatus" style="color:var(--gold); font-size:9px;"></span>`,
+    {buttons:[
+      {label:'COPY CODE', action:()=> window.__ff1_copySaveCode()},
+      {label:'CLOSE', action:()=>{ hideDialogue(); state='overworld'; }}
+    ]}
+  );
+}
+window.__ff1_copySaveCode = ()=>{
+  const box = document.getElementById('exportCodeBox');
+  const status = document.getElementById('copyStatus');
+  if(!box) return;
+  box.select();
+  box.setSelectionRange(0, 999999);
+  let copied = false;
+  try{ copied = document.execCommand('copy'); }catch(err){}
+  if(!copied && navigator.clipboard){
+    navigator.clipboard.writeText(box.value).then(()=>{ if(status) status.textContent='Copied to clipboard!'; }).catch(()=>{ if(status) status.textContent='Select the text and copy manually (Ctrl+C).'; });
+    return;
+  }
+  if(status) status.textContent = copied ? 'Copied to clipboard!' : 'Select the text and copy manually (Ctrl+C).';
+};
+window.__ff1_showImport = ()=>{
+  document.getElementById('importPanel').style.display='block';
+  document.getElementById('importError').textContent='';
+  document.getElementById('importCodeInput').value='';
+  setTimeout(()=>document.getElementById('importCodeInput').focus(), 50);
+};
+window.__ff1_hideImport = ()=>{
+  document.getElementById('importPanel').style.display='none';
+};
+window.__ff1_doImport = ()=>{
+  const code = document.getElementById('importCodeInput').value;
+  const errEl = document.getElementById('importError');
+  if(!code.trim()){ errEl.textContent='Paste a save code first.'; return; }
+  const data = decodeSaveCode(code);
+  if(!data || !data.player){ errEl.textContent='That save code is invalid or corrupted.'; return; }
+  applySave(data);
+  gameStarted = true;
+  persistSave();
+  document.getElementById('importPanel').style.display='none';
+  titleScreen.style.display='none';
+  updateStatBar();
+  state='overworld';
+};
+
+function startGame(){
+  state='dialog';
+  showDialogue(
+    `Welcome, brave <b style="color:var(--gold)">${player.name}</b>! Darkness stirs in the castle to the east.<br>
+    Explore the land, grow strong in the tall grass, visit the <b>Inn</b> (campfire sign) and <b>Shop</b> (potion sign), then challenge the <b>Green Dragon</b> (skull door) when ready!`,
+    {center:true, buttons:[{label:"LET'S GO", action:()=>{ hideDialogue(); state='overworld'; }}]}
+  );
+}
+window.__ff1_startGame = showCharScreen;
+
+})();
+</script>
+</body>
+</html>
