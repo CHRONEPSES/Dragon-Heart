@@ -7,6 +7,7 @@ TO DO LIST:
 
 # v0.03 (7/5/2026)
 -added storage with additional purchasable tabs and renamable tabs
+
 -added fishing system
 
 # v0.02 (7/4/2026)
