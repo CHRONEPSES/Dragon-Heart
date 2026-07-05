@@ -352,6 +352,105 @@
   .shopBtn .shopIcon svg{ width:16px; height:16px; }
   .shopBtn .shopPrice{ opacity:0.75; white-space:nowrap; }
   .shopBtn:disabled .shopIcon{ opacity:0.4; }
+  #shopScreen{
+    display:none;
+    position:absolute;
+    left:150px; top:40px;
+    width:330px;
+    background:var(--box);
+    border:3px solid var(--border);
+    box-shadow:0 0 0 2px #000, 5px 5px 0 rgba(0,0,0,0.5);
+    flex-direction:column;
+    z-index:15;
+  }
+  #shopScreen .shopBody{ padding:8px 10px 10px 10px; }
+  .shopTabs{
+    display:flex;
+    gap:3px;
+    margin-bottom:8px;
+    flex-wrap:wrap;
+  }
+  .shopTab{
+    font-size:7px;
+    padding:4px 7px;
+    letter-spacing:1px;
+    border:2px solid #555;
+    background:var(--box);
+    color:var(--text);
+  }
+  .shopTab.active{
+    border-color:var(--gold);
+    color:var(--gold);
+    background:#1a2f6e;
+  }
+  #shopScreen .shopNote{
+    color:var(--gold);
+    font-size:9px;
+    min-height:14px;
+    margin-top:8px;
+  }
+  #storageScreen{
+    display:none;
+    position:absolute;
+    left:300px; top:20px;
+    width:316px;
+    background:var(--box);
+    border:3px solid var(--border);
+    box-shadow:0 0 0 2px #000, 5px 5px 0 rgba(0,0,0,0.5);
+    flex-direction:column;
+    z-index:15;
+  }
+  #storageScreen .storageBody{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:7px 8px 8px 8px;
+  }
+  .storageTabs{
+    display:grid;
+    grid-template-columns:repeat(10, 27px);
+    gap:2px;
+    margin-bottom:5px;
+  }
+  .storageTab{
+    font-size:7px;
+    padding:3px 0;
+    border:2px solid #555;
+    background:var(--box);
+    color:var(--text);
+    overflow:hidden;
+    white-space:nowrap;
+  }
+  .storageTab.active{
+    border-color:var(--gold);
+    color:var(--gold);
+    background:#1a2f6e;
+  }
+  .storageRename{
+    display:flex;
+    align-items:center;
+    gap:5px;
+    margin-bottom:6px;
+    font-size:8px;
+  }
+  .storageRename input{
+    font-family:'Courier New', monospace;
+    font-size:9px;
+    background:#0a1440;
+    color:var(--text);
+    border:2px solid var(--border);
+    padding:3px 6px;
+    width:150px;
+  }
+  .storageRename input:focus{ outline:none; border-color:var(--gold); }
+  #storageScreen .sFooter{
+    margin-top:6px;
+    font-size:8px;
+    text-align:center;
+    max-width:290px;
+    min-height:20px;
+    padding:4px 8px;
+  }
   #charSheetScreen{
     display:none;
     position:absolute;
@@ -665,6 +764,8 @@
   <div id="skillScreen"></div>
   <div id="invScreen"></div>
   <div id="charSheetScreen"></div>
+  <div id="shopScreen"></div>
+  <div id="storageScreen"></div>
 </div>
 
 <div id="controls">
@@ -784,12 +885,95 @@ function buildDesertMap(){
   [[4,3],[9,4],[14,3],[6,10],[12,11],[16,8],[3,11],[10,8],[15,12],[7,6],[17,4]].forEach(([x,y])=>{ g[y][x]=14; });
   return g;
 }
+function buildInnMap(){
+  const g = [];
+  for(let y=0;y<ROWS;y++){
+    const row=[];
+    for(let x=0;x<COLS;x++) row.push(21); // void outside the room
+    g.push(row);
+  }
+  // room: walls ring x5..14, y2..11; wooden floor inside
+  for(let y=2;y<=11;y++){
+    for(let x=5;x<=14;x++){
+      g[y][x] = (y===2||y===11||x===5||x===14) ? 17 : 16;
+    }
+  }
+  // innkeeper's counter
+  for(let x=8;x<=11;x++) g[5][x]=18;
+  // fireplace set into the back wall
+  g[2][7]=23;
+  // tavern tables
+  g[8][7]=24; g[8][12]=24; g[10][12]=24;
+  // door in the east wall to the guest room
+  g[8][14]=25;
+  // exit rug in the south wall
+  g[11][9]=19;
+  return g;
+}
+function buildRoomMap(){
+  const g = [];
+  for(let y=0;y<ROWS;y++){
+    const row=[];
+    for(let x=0;x<COLS;x++) row.push(21);
+    g.push(row);
+  }
+  // small guest room: walls ring x7..12, y4..10
+  for(let y=4;y<=10;y++){
+    for(let x=7;x<=12;x++){
+      g[y][x] = (y===4||y===10||x===7||x===12) ? 17 : 16;
+    }
+  }
+  g[5][8]=20;  // bed
+  g[5][11]=26; // storage chest
+  g[10][9]=19; // exit rug back to the inn
+  return g;
+}
 const overworldMap = buildMap();
 const desertMap = buildDesertMap();
+const innMap = buildInnMap();
+function buildStoreMap(){
+  const g = [];
+  for(let y=0;y<ROWS;y++){
+    const row=[];
+    for(let x=0;x<COLS;x++) row.push(21); // void outside the room
+    g.push(row);
+  }
+  // room: walls ring x5..14, y2..11; wooden floor inside
+  for(let y=2;y<=11;y++){
+    for(let x=5;x<=14;x++){
+      g[y][x] = (y===2||y===11||x===5||x===14) ? 17 : 16;
+    }
+  }
+  // stocked shelves along the back wall
+  for(let x=6;x<=13;x++) g[3][x]=22;
+  // shopkeeper's counter
+  for(let x=8;x<=11;x++) g[5][x]=18;
+  // exit rug in the south wall
+  g[11][9]=19;
+  return g;
+}
+const storeMap = buildStoreMap();
+const roomMap = buildRoomMap();
 let map = overworldMap;
+const INNKEEPER = {x:10, y:4};
+const SHOPKEEPER = {x:10, y:4};
+const CHEST = {x:11, y:5};
+const INN_PATRONS = [
+  {x:6,  y:8,  tunic:'#8f2b2b', hair:'#1a1a1a'},
+  {x:12, y:9,  tunic:'#2b7a3a', hair:'#d9b45c'},
+  {x:11, y:10, tunic:'#3a4a52', hair:'#e8e8e8'}
+];
+const PATRON_LINES = [
+  `"They say the grass east of town hides monsters. I stick to the road."`,
+  `"A green dragon in the castle? I'll drink to your funeral, hero."`,
+  `"The shopkeeper's iron swords are worth every coin. The bronze ones... eh."`,
+  `"I once saw the vine by the castle glow at night. Unnatural, that."`,
+  `"Best stew in the realm, right here. Don't tell my wife I said so."`,
+  `"Rested legs walk farther. Ten gold's a bargain, friend."`
+];
 function setActiveZone(zone){
   player.zone = zone;
-  map = (zone==='desert') ? desertMap : overworldMap;
+  map = (zone==='desert') ? desertMap : (zone==='inn') ? innMap : (zone==='store') ? storeMap : (zone==='room') ? roomMap : overworldMap;
 }
 function applyVineState(){
   if(player.vineDestroyed){
@@ -805,7 +989,7 @@ function tileAt(x,y){
   if(y<0||y>=ROWS||x<0||x>=COLS) return 2;
   return map[y][x];
 }
-function isBlocked(t){ return t===2||t===3||t===5||t===9||t===10||t===12||t===14; }
+function isBlocked(t){ return t===2||t===3||t===5||t===9||t===10||t===12||t===14||t===17||t===18||t===20||t===21||t===22||t===23||t===24||t===26; }
 
 // ---------- PLAYER ----------
 const player = {
@@ -972,6 +1156,7 @@ const titleScreen = document.getElementById('titleScreen');
 const charScreen = document.getElementById('charScreen');
 const invScreen = document.getElementById('invScreen');
 const charSheetScreen = document.getElementById('charSheetScreen');
+const shopScreen = document.getElementById('shopScreen');
 const gameWrapEl = document.getElementById('gameWrap');
 const btnInteractEl = document.getElementById('btnInteract');
 const invTooltip = document.createElement('div');
@@ -1038,7 +1223,7 @@ function hideMenu(){ menuPanel.style.display='none'; menuPanel.innerHTML=''; }
 
 // ---------- OVERWORLD RENDER ----------
 const TILE_COLORS = {
-  0:'#1c6b2e', 1:'#c2a366', 2:'#0d3a17', 3:'#2454a8', 4:'#8a6a45', 5:'#5b5b6b', 6:'#d9b779', 7:'#d9b779', 8:'#4a4a52', 11:'#7d7d88', 12:'#c2a366', 13:'#c2a366', 14:'#d8b96a', 15:'#d8b96a'
+  0:'#1c6b2e', 1:'#c2a366', 2:'#0d3a17', 3:'#2454a8', 4:'#8a6a45', 5:'#5b5b6b', 6:'#d9b779', 7:'#d9b779', 8:'#4a4a52', 11:'#7d7d88', 12:'#c2a366', 13:'#c2a366', 14:'#d8b96a', 15:'#d8b96a', 16:'#9a6a38', 17:'#4a3018', 18:'#7a4a20', 19:'#9a6a38', 20:'#9a6a38', 21:'#050508', 22:'#4a3018', 23:'#4a3018', 24:'#9a6a38', 25:'#4a3018', 26:'#9a6a38'
 };
 function drawTile(x,y,t){
   const px=x*TS, py=y*TS;
@@ -1304,6 +1489,243 @@ function drawTile(x,y,t){
     ctx.fillRect(px+20-(seed%4)*2, py+6+(seed%4), 2, 2);
     ctx.fillStyle='#efd79a';
     ctx.fillRect(px+14+(seed%3)*2, py+14+(seed%2)*4, 1.6, 1.6);
+  } else if(t===16 || t===19 || t===20 || t===24){ // interior wood floor (base for rug/bed/table too)
+    ctx.fillStyle='#9a6a38';
+    ctx.fillRect(px,py,TS,TS);
+    ctx.strokeStyle='#7a4f26';
+    ctx.lineWidth=1;
+    for(let i=0;i<4;i++){
+      ctx.beginPath();
+      ctx.moveTo(px, py+i*8+4);
+      ctx.lineTo(px+TS, py+i*8+4);
+      ctx.stroke();
+    }
+    // plank seams offset per row
+    ctx.beginPath();
+    ctx.moveTo(px+((x%2)?8:20), py+4); ctx.lineTo(px+((x%2)?8:20), py+12);
+    ctx.moveTo(px+((x%2)?24:12), py+20); ctx.lineTo(px+((x%2)?24:12), py+28);
+    ctx.stroke();
+    if(t===19){ // exit rug
+      ctx.fillStyle='#8a2a2a';
+      ctx.fillRect(px+5, py+3, TS-10, TS-6);
+      ctx.strokeStyle='#c8a04a';
+      ctx.strokeRect(px+7, py+5, TS-14, TS-10);
+      // downward chevron hint
+      const shineA = 0.4 + 0.3*Math.sin(animTimer*0.06);
+      ctx.strokeStyle=`rgba(255,235,150,${shineA.toFixed(2)})`;
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(px+11, py+13);
+      ctx.lineTo(px+16, py+20);
+      ctx.lineTo(px+21, py+13);
+      ctx.stroke();
+      ctx.lineWidth=1;
+    }
+    if(t===20){ // bed
+      ctx.fillStyle='#5e3a1a'; // frame
+      ctx.fillRect(px+4, py+2, TS-8, TS-4);
+      ctx.fillStyle='#e8e2d2'; // mattress
+      ctx.fillRect(px+6, py+4, TS-12, TS-8);
+      ctx.fillStyle='#ffffff'; // pillow
+      ctx.fillRect(px+8, py+6, 8, 6);
+      ctx.fillStyle='#8a2a2a'; // blanket
+      ctx.fillRect(px+6, py+14, TS-12, 12);
+      ctx.strokeStyle='#6e1e1e';
+      ctx.strokeRect(px+6, py+14, TS-12, 12);
+    }
+    if(t===24){ // tavern table with doodads
+      const seed = (x*5 + y*7) % 3;
+      // shadow + round tabletop
+      ctx.fillStyle='rgba(0,0,0,0.25)';
+      ctx.beginPath(); ctx.ellipse(px+16, py+18, 13, 11, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#7a4a20';
+      ctx.beginPath(); ctx.ellipse(px+16, py+15, 13, 11, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#8f5a2a';
+      ctx.beginPath(); ctx.ellipse(px+16, py+14, 11, 9, 0, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle='#5e3818';
+      ctx.beginPath(); ctx.moveTo(px+6, py+14); ctx.lineTo(px+26, py+14); ctx.stroke();
+      if(seed===0){ // bottle + two cups
+        ctx.fillStyle='#2b7a3a'; // green bottle
+        ctx.fillRect(px+14, py+5, 4, 8);
+        ctx.fillRect(px+15, py+2, 2, 4);
+        ctx.fillStyle='#c9c9c9'; // cups
+        ctx.fillRect(px+8, py+12, 4, 4);
+        ctx.fillRect(px+21, py+11, 4, 4);
+      } else if(seed===1){ // plate with roast + cup
+        ctx.fillStyle='#e8e2d2'; // plate
+        ctx.beginPath(); ctx.ellipse(px+14, py+12, 6, 4.5, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle='#b06a2a'; // roast
+        ctx.beginPath(); ctx.ellipse(px+14, py+11.5, 3.5, 2.5, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle='#e8d8a0'; // bone tip
+        ctx.fillRect(px+18, py+9, 2, 2);
+        ctx.fillStyle='#c9c9c9';
+        ctx.fillRect(px+23, py+10, 4, 4);
+      } else { // bread, cheese wedge + brown bottle
+        ctx.fillStyle='#c99a4a'; // bread loaf
+        ctx.beginPath(); ctx.ellipse(px+11, py+12, 5, 3, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle='#ecd24a'; // cheese
+        ctx.beginPath(); ctx.moveTo(px+19, py+14); ctx.lineTo(px+25, py+14); ctx.lineTo(px+22, py+9); ctx.closePath(); ctx.fill();
+        ctx.fillStyle='#6b4420'; // bottle
+        ctx.fillRect(px+15, py+4, 4, 8);
+        ctx.fillRect(px+16, py+1, 2, 4);
+      }
+    }
+  } else if(t===17){ // interior wall
+    ctx.fillStyle='#4a3018';
+    ctx.fillRect(px,py,TS,TS);
+    ctx.strokeStyle='#331f0e';
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(px+TS/2, py); ctx.lineTo(px+TS/2, py+TS);
+    ctx.moveTo(px, py+TS/2); ctx.lineTo(px+TS, py+TS/2);
+    ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,0.05)';
+    ctx.fillRect(px+2, py+2, TS-4, 3);
+  } else if(t===18){ // innkeeper's counter
+    ctx.fillStyle='#7a4a20'; // front panel
+    ctx.fillRect(px, py+8, TS, TS-8);
+    ctx.strokeStyle='#5e3818';
+    ctx.beginPath();
+    ctx.moveTo(px+TS/2, py+10); ctx.lineTo(px+TS/2, py+TS);
+    ctx.stroke();
+    ctx.fillStyle='#c2955c'; // polished counter top
+    ctx.fillRect(px, py, TS, 10);
+    ctx.fillStyle='rgba(255,255,255,0.25)';
+    ctx.fillRect(px, py+2, TS, 2);
+  } else if(t===23){ // fireplace set into the wall
+    // wall base
+    ctx.fillStyle='#4a3018';
+    ctx.fillRect(px,py,TS,TS);
+    // stone surround
+    ctx.fillStyle='#6e6e78';
+    ctx.fillRect(px+2, py+2, TS-4, TS-2);
+    ctx.strokeStyle='#4a4a55';
+    ctx.strokeRect(px+2, py+2, TS-4, TS-2);
+    ctx.beginPath();
+    ctx.moveTo(px+2, py+9); ctx.lineTo(px+TS-2, py+9);
+    ctx.stroke();
+    // dark hearth opening
+    ctx.fillStyle='#100804';
+    ctx.beginPath();
+    ctx.moveTo(px+7, py+TS);
+    ctx.lineTo(px+7, py+16);
+    ctx.arc(px+16, py+16, 9, Math.PI, 0);
+    ctx.lineTo(px+25, py+TS);
+    ctx.closePath();
+    ctx.fill();
+    // logs
+    ctx.fillStyle='#5e3a1a';
+    ctx.fillRect(px+9, py+27, 14, 3);
+    // animated flames
+    const flick = (animTimer%14<7)?0:2;
+    ctx.fillStyle='#ff8c1a';
+    ctx.beginPath();
+    ctx.moveTo(px+16, py+13-flick);
+    ctx.quadraticCurveTo(px+22, py+20, px+18, py+27);
+    ctx.quadraticCurveTo(px+21, py+21, px+16, py+16);
+    ctx.quadraticCurveTo(px+11, py+21, px+14, py+27);
+    ctx.quadraticCurveTo(px+10, py+20, px+16, py+13-flick);
+    ctx.fill();
+    ctx.fillStyle='#ffe066';
+    ctx.beginPath();
+    ctx.arc(px+16, py+24, 3+(flick?0.8:0), 0, Math.PI*2);
+    ctx.fill();
+    // warm glow spilling onto the floor below
+    const glowA = 0.10 + 0.06*Math.sin(animTimer*0.1);
+    ctx.fillStyle=`rgba(255,140,26,${glowA.toFixed(2)})`;
+    ctx.beginPath();
+    ctx.ellipse(px+16, py+TS+8, 16, 9, 0, 0, Math.PI*2);
+    ctx.fill();
+  } else if(t===25){ // interior door in a side wall
+    ctx.fillStyle='#4a3018'; // wall base
+    ctx.fillRect(px,py,TS,TS);
+    ctx.fillStyle='#7a4a20'; // door
+    ctx.fillRect(px+4, py+3, TS-8, TS-6);
+    ctx.strokeStyle='#5e3818';
+    ctx.strokeRect(px+4, py+3, TS-8, TS-6);
+    ctx.beginPath();
+    ctx.moveTo(px+16, py+4); ctx.lineTo(px+16, py+TS-4);
+    ctx.stroke();
+    ctx.fillStyle='#d8b45a'; // handle
+    ctx.beginPath(); ctx.arc(px+12, py+17, 1.8, 0, Math.PI*2); ctx.fill();
+    // soft glow hint that it's enterable
+    const doorGlow = 0.10 + 0.08*Math.sin(animTimer*0.05);
+    ctx.fillStyle=`rgba(255,213,74,${doorGlow.toFixed(2)})`;
+    ctx.fillRect(px+4, py+3, TS-8, TS-6);
+  } else if(t===26){ // storage chest
+    // wood floor base
+    ctx.fillStyle='#9a6a38';
+    ctx.fillRect(px,py,TS,TS);
+    ctx.strokeStyle='#7a4f26';
+    for(let i=0;i<4;i++){
+      ctx.beginPath();
+      ctx.moveTo(px, py+i*8+4); ctx.lineTo(px+TS, py+i*8+4);
+      ctx.stroke();
+    }
+    // chest body
+    ctx.fillStyle='#6b4420';
+    ctx.fillRect(px+5, py+12, TS-10, 16);
+    // curved lid
+    ctx.fillStyle='#8a5a2c';
+    ctx.beginPath();
+    ctx.moveTo(px+5, py+14);
+    ctx.quadraticCurveTo(px+16, py+4, px+27, py+14);
+    ctx.lineTo(px+27, py+17);
+    ctx.lineTo(px+5, py+17);
+    ctx.closePath();
+    ctx.fill();
+    // iron bands
+    ctx.fillStyle='#4a4a55';
+    ctx.fillRect(px+5, py+16, TS-10, 2);
+    ctx.fillRect(px+9, py+7, 3, 21);
+    ctx.fillRect(px+20, py+7, 3, 21);
+    // gold clasp with a soft shine
+    const clasp = (animTimer%50<25)?'#ffd54a':'#d8b45a';
+    ctx.fillStyle=clasp;
+    ctx.fillRect(px+14, py+15, 4, 6);
+  } else if(t===21){ // void outside the room
+    ctx.fillStyle='#050508';
+    ctx.fillRect(px,py,TS,TS);
+  } else if(t===22){ // stocked store shelves
+    const seed = (x*7+y*3)%3;
+    ctx.fillStyle='#4a3018'; // backboard
+    ctx.fillRect(px,py,TS,TS);
+    // two shelf boards
+    ctx.fillStyle='#8a5a2c';
+    ctx.fillRect(px+2, py+13, TS-4, 3);
+    ctx.fillRect(px+2, py+27, TS-4, 3);
+    // wares vary per tile
+    if(seed===0){ // potion bottles
+      ctx.fillStyle='#c04ee0';
+      ctx.fillRect(px+6, py+6, 5, 7);
+      ctx.fillStyle='#3b82f6';
+      ctx.fillRect(px+14, py+7, 5, 6);
+      ctx.fillStyle='#4ade80';
+      ctx.fillRect(px+22, py+6, 5, 7);
+      ctx.fillStyle='#8a5a2c';
+      ctx.fillRect(px+7, py+4, 3, 2); ctx.fillRect(px+15, py+5, 3, 2); ctx.fillRect(px+23, py+4, 3, 2);
+      ctx.fillStyle='#e8e2d2';
+      ctx.fillRect(px+8, py+20, 7, 7);
+      ctx.fillRect(px+19, py+21, 6, 6);
+    } else if(seed===1){ // boxes and a sword
+      ctx.fillStyle='#a5763c';
+      ctx.fillRect(px+5, py+6, 9, 7);
+      ctx.fillRect(px+18, py+7, 8, 6);
+      ctx.strokeStyle='#6b4420';
+      ctx.strokeRect(px+5, py+6, 9, 7);
+      ctx.fillStyle='#cfd6e6';
+      ctx.fillRect(px+10, py+18, 3, 9);
+      ctx.fillStyle='#8a5a2c';
+      ctx.fillRect(px+7, py+25, 9, 2);
+    } else { // scrolls and a charm
+      ctx.fillStyle='#e8e2d2';
+      ctx.fillRect(px+6, py+8, 8, 4);
+      ctx.fillRect(px+17, py+6, 4, 7);
+      ctx.fillStyle='#ffd54a';
+      ctx.beginPath(); ctx.arc(px+12, py+23, 3.5, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#dc2626';
+      ctx.fillRect(px+20, py+20, 6, 6);
+    }
   }
   if(t===6 || t===7){ // inn/shop — plain arched wooden door blended into the wall
     // wall texture continuity around the door
@@ -1605,6 +2027,29 @@ function drawTownDirt(){
     }
   }
   ctx.restore();
+
+  // blend the vertical road (column x=5) into the dirt patch with gradient connectors
+  const roadX = 5*TS;
+  function pathBlend(yStart, yEnd){
+    // opaque path color at yStart fading to transparent at yEnd (into the dirt)
+    const grad = ctx.createLinearGradient(0, yStart, 0, yEnd);
+    grad.addColorStop(0, 'rgba(194,163,102,1)');
+    grad.addColorStop(1, 'rgba(194,163,102,0)');
+    ctx.fillStyle = grad;
+    const top = Math.min(yStart,yEnd), h = Math.abs(yEnd-yStart);
+    ctx.fillRect(roadX, top, TS, h);
+    // fading path dots continuing into the dirt
+    for(let i=0;i<3;i++){
+      const frac = (i+1)/4;
+      const dy = yStart + (yEnd-yStart)*frac;
+      ctx.fillStyle = `rgba(176,143,86,${(1-frac).toFixed(2)})`;
+      ctx.fillRect(roadX+5+(i%2)*16, dy-2, 4, 4);
+    }
+  }
+  // south side: road tile below the patch fades upward into it
+  pathBlend(6*TS+8, 5*TS+10);
+  // north side: road tile above the patch fades downward into it
+  pathBlend(TS+8, 2*TS+18);
 }
 
 // wooden signs hanging from the top-right of the inn and shop
@@ -1691,11 +2136,75 @@ function drawBuildingSigns(){
   });
 }
 
+function drawInnkeeper(){
+  const px = INNKEEPER.x*TS, py = INNKEEPER.y*TS;
+  const bob = (animTimer%80<40)?0:1;
+  ctx.fillStyle='#f4c98a'; // skin
+  ctx.fillRect(px+11, py+4+bob, 10, 8);
+  ctx.fillStyle='#6e6e6e'; // grey hair
+  ctx.fillRect(px+10, py+2+bob, 12, 4);
+  ctx.fillStyle='#5e3a1a'; // brown tunic
+  ctx.fillRect(px+8, py+12+bob, 16, 12);
+  ctx.fillStyle='#e8e2d2'; // apron
+  ctx.fillRect(px+11, py+13+bob, 10, 11);
+  ctx.fillStyle='#8a5a2c'; // legs
+  ctx.fillRect(px+9, py+24+bob, 6, 6);
+  ctx.fillRect(px+17, py+24+bob, 6, 6);
+}
+function drawShopkeeper(){
+  const px = SHOPKEEPER.x*TS, py = SHOPKEEPER.y*TS;
+  const bob = (animTimer%70<35)?0:1;
+  ctx.fillStyle='#f4c98a'; // skin
+  ctx.fillRect(px+11, py+4+bob, 10, 8);
+  ctx.fillStyle='#8a3a1f'; // auburn hair
+  ctx.fillRect(px+10, py+2+bob, 12, 4);
+  ctx.fillRect(px+9, py+4+bob, 2, 5);
+  ctx.fillStyle='#3d2a5a'; // purple merchant tunic
+  ctx.fillRect(px+8, py+12+bob, 16, 12);
+  ctx.fillStyle='#ffd54a'; // gold sash
+  ctx.fillRect(px+8, py+17+bob, 16, 2);
+  ctx.fillStyle='#8a5a2c'; // legs
+  ctx.fillRect(px+9, py+24+bob, 6, 6);
+  ctx.fillRect(px+17, py+24+bob, 6, 6);
+}
+
+function drawPathConnector(){
+  // vertical path column 5 runs up under the town dirt blob; paint a path-colored
+  // strip beneath the blob so no grass peeks through at the seam
+  const px = 5*TS;
+  const topY = 4.2*TS;
+  const botY = 6*TS + 2; // slight overlap onto the row-6 path tile
+  ctx.fillStyle = TILE_COLORS[1];
+  ctx.fillRect(px, topY, TS, botY-topY);
+  // matching path speckle texture
+  ctx.fillStyle='#b08f56';
+  for(let i=0;i<5;i++){
+    ctx.fillRect(px+4+(i%3)*9, topY+6+i*10, 4, 4);
+  }
+}
+
+function drawPatrons(){
+  INN_PATRONS.forEach((p, i)=>{
+    const px = p.x*TS, py = p.y*TS;
+    const bob = ((animTimer + i*23) % 76 < 38) ? 0 : 1;
+    ctx.fillStyle='#f4c98a'; // skin
+    ctx.fillRect(px+11, py+4+bob, 10, 8);
+    ctx.fillStyle=p.hair;
+    ctx.fillRect(px+10, py+2+bob, 12, 4);
+    ctx.fillStyle=p.tunic;
+    ctx.fillRect(px+8, py+12+bob, 16, 12);
+    ctx.fillStyle='#8a5a2c'; // legs
+    ctx.fillRect(px+9, py+24+bob, 6, 6);
+    ctx.fillRect(px+17, py+24+bob, 6, 6);
+  });
+}
+
 function drawOverworld(){
   for(let y=0;y<ROWS;y++)
     for(let x=0;x<COLS;x++)
       drawTile(x,y,map[y][x]);
   if(player.zone==='overworld'){
+    drawPathConnector();
     drawTownDirt();
     // redraw buildings on top of the dirt patch
     for(let y=0;y<ROWS;y++)
@@ -1706,6 +2215,8 @@ function drawOverworld(){
     drawBuildingSigns();
     drawLakes();
   }
+  if(player.zone==='inn'){ drawInnkeeper(); drawPatrons(); }
+  if(player.zone==='store') drawShopkeeper();
   drawPlayerSprite(player.x*TS, player.y*TS);
 }
 
@@ -1721,10 +2232,35 @@ function tryMove(dx,dy){
   const nx=player.x+dx, ny=player.y+dy;
   const t = tileAt(nx,ny);
   if(isBlocked(t)) return;
+  if(player.zone==='inn' && nx===INNKEEPER.x && ny===INNKEEPER.y) return; // innkeeper blocks the way
+  if(player.zone==='inn' && INN_PATRONS.some(p=>p.x===nx && p.y===ny)) return; // patrons block the way
+  if(player.zone==='store' && nx===SHOPKEEPER.x && ny===SHOPKEEPER.y) return; // shopkeeper blocks the way
   player.x=nx; player.y=ny;
   walkFrame++;
   if(typeof persistSave==='function') persistSave();
 
+  if(t===19){ // interior exit rug — return to the previous area
+    const from = player.zone;
+    if(from==='room'){
+      setActiveZone('inn');
+      player.x=13; player.y=8;
+      player.facing='left';
+    } else {
+      setActiveZone('overworld');
+      player.x = (from==='store') ? 8 : 3;
+      player.y = 5;
+      player.facing='down';
+    }
+    persistSave();
+    return;
+  }
+  if(t===25 && player.zone==='inn'){ // guest room door
+    setActiveZone('room');
+    player.x=9; player.y=9;
+    player.facing='up';
+    persistSave();
+    return;
+  }
   if(t===13){ // zone exit
     if(player.zone==='overworld'){
       setActiveZone('desert');
@@ -1787,11 +2323,42 @@ function vineDialog(){
     );
   }
 }
+function enterStore(){
+  setActiveZone('store');
+  player.x=9; player.y=10;
+  player.facing='up';
+  persistSave();
+}
+function nearShopkeeper(){
+  if(player.zone!=='store') return false;
+  return (Math.abs(player.x-SHOPKEEPER.x) + Math.abs(player.y-SHOPKEEPER.y)) <= 2;
+}
+function nearPatron(){
+  if(player.zone!=='inn') return null;
+  return INN_PATRONS.find(p=> Math.abs(player.x-p.x)+Math.abs(player.y-p.y) <= 1) || null;
+}
+function patronDialog(){
+  state='dialog';
+  const line = PATRON_LINES[Math.floor(Math.random()*PATRON_LINES.length)];
+  showDialogue(
+    `<b style="color:#9fb3ff">PATRON</b><br>${line}`,
+    {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+  );
+}
 function interact(){
   if(state==='overworld'){
+    if(player.zone==='inn'){
+      if(nearInnkeeper()) innkeeperDialog();
+      else if(nearPatron()) patronDialog();
+      return;
+    }
+    if(player.zone==='store'){
+      if(nearShopkeeper()) openShop();
+      return;
+    }
     const t = tileAt(player.x,player.y);
-    if(t===6) openInn();
-    else if(t===7) openShop();
+    if(t===6) enterInn();
+    else if(t===7) enterStore();
     else if(t===8) enterBoss();
     else if(adjacentToVine()) vineDialog();
   }
@@ -1811,6 +2378,8 @@ window.addEventListener('keydown', e=>{
     else if(e.key==='Escape'){ closeInventory(); closeCharSheet(); closeSkillScreen(); }
   } else if(state==='dialog' && battle===null){
     if(e.key==='Escape'){ hideDialogue(); state='overworld'; }
+  } else if(state==='shop'){
+    if(e.key==='Escape'||e.key==='e'||e.key==='E') closeShop();
   }
 });
 document.getElementById('btnUp').onclick=()=>tryMove(0,-1);
@@ -1835,7 +2404,7 @@ function bringToFront(winEl){
   topWindowZ++;
   winEl.style.zIndex = topWindowZ;
 }
-[invScreen, charSheetScreen, skillScreen].forEach(w=>{
+[invScreen, charSheetScreen, skillScreen, shopScreen].forEach(w=>{
   w.addEventListener('pointerdown', ()=>bringToFront(w), true);
 });
 
@@ -2248,6 +2817,210 @@ function attachInventoryDragHandlers(){
 }
 window.__ff1_closeInv = ()=> closeInventory();
 
+// ---------- STORAGE CHEST (9x9 grid, 20 renameable tabs) ----------
+const STORAGE_TAB_COUNT = 20;
+let activeStorageTab = 0;
+function ensureStorage(){
+  if(!player.storageTabs || player.storageTabs.length!==STORAGE_TAB_COUNT){
+    player.storageTabs = [];
+    for(let i=0;i<STORAGE_TAB_COUNT;i++) player.storageTabs.push({name:'Tab '+(i+1), items:[]});
+  }
+}
+function storageTab(){ ensureStorage(); return player.storageTabs[activeStorageTab]; }
+function storageEntryAt(slot){ return storageTab().items.find(it=>it.slot===slot) || null; }
+function findFreeStorageSlot(){
+  for(let i=0;i<INV_SLOTS;i++){ if(!storageEntryAt(i)) return i; }
+  return -1;
+}
+function isStorageOpen(){ return storageScreen.style.display==='flex'; }
+function openStorage(){
+  if(state!=='overworld') return;
+  ensureStorage();
+  renderStorageWindow();
+  storageScreen.style.display='flex';
+  bringToFront(storageScreen);
+  // open the character inventory alongside for easy depositing
+  if(!isInvOpen()){ renderInventoryGrid(); invScreen.style.display='flex'; }
+  invFlashMsg('Storage open — click items here to DEPOSIT them.');
+}
+function closeStorage(){
+  storageScreen.style.display='none';
+  invTooltip.style.display='none';
+  if(isInvOpen()) renderInventoryGrid();
+}
+window.__ff1_closeStorage = ()=> closeStorage();
+window.__ff1_storageTab = (i)=>{ activeStorageTab = i; renderStorageWindow(); };
+window.__ff1_renameTab = (val)=>{
+  const name = (val||'').slice(0,14);
+  storageTab().name = name || ('Tab '+(activeStorageTab+1));
+  // update only the tab strip label to avoid stealing input focus
+  const btn = document.getElementById('stab'+activeStorageTab);
+  if(btn) btn.textContent = storageTab().name.charAt(0).toUpperCase() || (activeStorageTab+1);
+  if(typeof persistSave==='function') persistSave();
+};
+function storageFlash(msg){
+  const el = document.getElementById('storageFooterMsg');
+  if(el) el.textContent = msg;
+}
+function depositFromInventory(slot){
+  const occ = occupantAt(slot);
+  if(!occ) return;
+  ensureStorage();
+  const tab = storageTab();
+  if(occ.kind==='potion' || occ.kind==='ether'){
+    let entry = tab.items.find(it=>it.kind===occ.kind);
+    if(!entry){
+      const free = findFreeStorageSlot();
+      if(free<0){ storageFlash('This storage tab is full!'); return; }
+      entry = {slot:free, kind:occ.kind, qty:0};
+      tab.items.push(entry);
+    }
+    entry.qty++;
+    if(occ.kind==='potion') player.potions--; else player.ethers--;
+    storageFlash(`Deposited 1 ${occ.kind==='potion'?'Potion':'Ether'}.`);
+  } else if(occ.kind==='gear'){
+    if(isEquipped(occ.uid)){ invFlashMsg('Unequip that item before storing it.'); return; }
+    const free = findFreeStorageSlot();
+    if(free<0){ storageFlash('This storage tab is full!'); return; }
+    const piece = gearByUid(occ.uid);
+    player.gear = player.gear.filter(g=>g.uid!==occ.uid);
+    tab.items.push({slot:free, kind:'gear', uid:piece.uid, id:piece.id});
+    storageFlash(`Stored ${EQUIP_DEFS[piece.id].name}.`);
+  }
+  updateStatBar();
+  renderInventoryGrid();
+  renderStorageWindow(true);
+}
+function withdrawFromStorage(slot){
+  const tab = storageTab();
+  const entry = storageEntryAt(slot);
+  if(!entry) return;
+  if(entry.kind==='potion' || entry.kind==='ether'){
+    if(entry.kind==='potion') player.potions++; else player.ethers++;
+    entry.qty--;
+    if(entry.qty<=0) tab.items = tab.items.filter(it=>it!==entry);
+    storageFlash(`Withdrew 1 ${entry.kind==='potion'?'Potion':'Ether'}.`);
+  } else {
+    const free = findFreeInvSlot();
+    if(free<0){ storageFlash('Your inventory is full!'); return; }
+    player.gear.push({uid:entry.uid, id:entry.id, gridSlot:free});
+    tab.items = tab.items.filter(it=>it!==entry);
+    storageFlash(`Withdrew ${EQUIP_DEFS[entry.id].name}.`);
+  }
+  updateStatBar();
+  if(isInvOpen()) renderInventoryGrid();
+  renderStorageWindow(true);
+}
+function storageItemInfo(entry){
+  if(entry.kind==='potion') return {name:'Potion', color:RARITY_COLORS.common, desc:'Restores HP when used.', status:'Click to withdraw.'};
+  if(entry.kind==='ether') return {name:'Ether', color:RARITY_COLORS.common, desc:'Restores MP when used.', status:'Click to withdraw.'};
+  const def = EQUIP_DEFS[entry.id];
+  const isQuest = def.slot==='quest';
+  const type = isQuest ? 'Quest Item' : def.slot.charAt(0).toUpperCase()+def.slot.slice(1);
+  const rc = rarityColorOf(entry.id);
+  return {name:def.name, color:rc, desc:`<span style="color:${rc}">${rarityLabel(def.rarity)}</span> <span style="color:#9fb3ff">${type}</span><br>${def.desc}`, status:'Click to withdraw.'};
+}
+function renderStorageWindow(keepMsg){
+  ensureStorage();
+  const prevMsg = keepMsg ? (document.getElementById('storageFooterMsg')||{}).textContent : null;
+  const tabStrip = player.storageTabs.map((t,i)=>
+    `<button id="stab${i}" class="storageTab${i===activeStorageTab?' active':''}" title="${t.name}" onclick="window.__ff1_storageTab(${i})">${t.name.charAt(0).toUpperCase()||i+1}</button>`
+  ).join('');
+  let grid = '';
+  for(let i=0;i<INV_SLOTS;i++){
+    const entry = storageEntryAt(i);
+    if(entry){
+      const icon = (entry.kind==='gear') ? gearIconSVG(entry.id) : consumableIconSVG(entry.kind);
+      const border = (entry.kind==='gear') ? `style="border-color:${rarityColorOf(entry.id)};"` : '';
+      const badge = (entry.kind==='gear') ? '' : `<div class="qtyBadge">${entry.qty}</div>`;
+      grid += `<div class="invCell filled" data-slot="${i}" ${border}>
+        <div class="itemIcon">${icon}</div>
+        ${badge}
+      </div>`;
+    } else {
+      grid += `<div class="invCell" data-slot="${i}"></div>`;
+    }
+  }
+  storageScreen.innerHTML = `
+    <div class="invTitleBar" id="storageTitleBar">
+      <span>📦 STORAGE — ${storageTab().name}</span>
+      <button type="button" class="invCloseBtn" onclick="window.__ff1_closeStorage()">✕</button>
+    </div>
+    <div class="storageBody">
+      <div class="storageTabs">${tabStrip}</div>
+      <div class="storageRename">
+        <span style="color:var(--gold)">RENAME:</span>
+        <input id="storageTabName" maxlength="14" value="${storageTab().name.replace(/"/g,'&quot;')}" oninput="window.__ff1_renameTab(this.value)">
+      </div>
+      <div class="invGrid" id="storageGridEl">${grid}</div>
+      <div class="sFooter box" id="storageFooterMsg">${prevMsg || 'Click your inventory items to deposit. Click stored items to withdraw. Drag to rearrange.'}</div>
+    </div>`;
+  makeWindowDraggable(storageScreen, 'storageTitleBar');
+  attachStorageHandlers();
+}
+function attachStorageHandlers(){
+  const cells = storageScreen.querySelectorAll('#storageGridEl .invCell.filled');
+  cells.forEach(cellEl=>{
+    const slot = parseInt(cellEl.dataset.slot);
+    const entry = storageEntryAt(slot);
+    cellEl.addEventListener('mouseenter', (e)=>{
+      if(!entry) return;
+      const it = storageItemInfo(entry);
+      invTooltip.innerHTML = `<b style="color:${it.color};">${it.name}</b><br>${it.desc}<br><span style="opacity:0.75;">${it.status}</span>`;
+      invTooltip.style.display='block';
+      invTooltip.style.left=(e.clientX+16)+'px';
+      invTooltip.style.top=(e.clientY+16)+'px';
+    });
+    cellEl.addEventListener('mousemove', (e)=>{
+      invTooltip.style.left=(e.clientX+16)+'px';
+      invTooltip.style.top=(e.clientY+16)+'px';
+    });
+    cellEl.addEventListener('mouseleave', ()=>{ invTooltip.style.display='none'; });
+    cellEl.addEventListener('pointerdown', (e)=>{
+      const startSlot = parseInt(cellEl.dataset.slot);
+      const startEntry = storageEntryAt(startSlot);
+      if(!startEntry) return;
+      e.preventDefault();
+      const startX=e.clientX, startY=e.clientY;
+      let moved=false, lastHover=null;
+      try{ cellEl.setPointerCapture(e.pointerId); }catch(err){}
+      cellEl.classList.add('dragging');
+      function findCellUnder(cx,cy){
+        const el = document.elementFromPoint(cx,cy);
+        return el ? el.closest('#storageGridEl .invCell') : null;
+      }
+      function onMove(ev){
+        if(Math.abs(ev.clientX-startX)+Math.abs(ev.clientY-startY)>6) moved=true;
+        if(lastHover) lastHover.classList.remove('dragover');
+        const under = findCellUnder(ev.clientX, ev.clientY);
+        if(under && under!==cellEl){ under.classList.add('dragover'); lastHover=under; }
+        else lastHover=null;
+      }
+      function onUp(ev){
+        cellEl.removeEventListener('pointermove', onMove);
+        cellEl.removeEventListener('pointerup', onUp);
+        cellEl.classList.remove('dragging');
+        if(lastHover) lastHover.classList.remove('dragover');
+        const under = findCellUnder(ev.clientX, ev.clientY);
+        if(!moved){
+          withdrawFromStorage(startSlot);
+        } else if(under){
+          const toSlot = parseInt(under.dataset.slot);
+          if(!isNaN(toSlot) && toSlot!==startSlot){
+            const target = storageEntryAt(toSlot);
+            if(target) target.slot = startSlot;
+            startEntry.slot = toSlot;
+            persistSave();
+            renderStorageWindow(true);
+          }
+        }
+      }
+      cellEl.addEventListener('pointermove', onMove);
+      cellEl.addEventListener('pointerup', onUp);
+    });
+  });
+}
+
 // ---------- SKILL TREE SCREEN ----------
 let skillFooterMsg = 'Spend Skill Points to unlock nodes outward from HERO. Earn 1 SP per level up.';
 function isSkillsOpen(){ return skillScreen.style.display==='flex'; }
@@ -2348,28 +3121,49 @@ window.__ff1_unlockNode = (key, idx)=> unlockNode(key, idx);
 window.__ff1_closeSkills = ()=> closeSkillScreen();
 
 
-function openInn(){
+function enterInn(){
+  setActiveZone('inn');
+  player.x=9; player.y=10;
+  player.facing='up';
+  persistSave();
+}
+function nearInnkeeper(){
+  if(player.zone!=='inn') return false;
+  return (Math.abs(player.x-INNKEEPER.x) + Math.abs(player.y-INNKEEPER.y)) <= 2;
+}
+function innkeeperDialog(){
   state='dialog';
   showDialogue(
-    `<b style="color:var(--gold)">INN</b><br>Rest here and recover your strength for <b>10 G</b>?`,
+    `<b style="color:var(--gold)">INNKEEPER</b><br>"Welcome, weary traveler! A warm bed and a hot meal will fix you right up — <b>10 G</b> for the night?"`,
     {buttons:[
       {label:'REST (10G)', action:()=>{
         if(player.gold>=10){
           player.gold-=10; player.hp=player.maxhp; player.mp=player.maxmp;
           updateStatBar();
-          showDialogue('You feel fully restored!', {buttons:[{label:'OK', action:()=>{hideDialogue(); state='overworld';}}]});
+          showDialogue(`"Sleep well!"<br><br>You feel fully restored!`, {buttons:[{label:'OK', action:()=>{hideDialogue(); state='overworld';}}]});
         } else {
-          showDialogue("You don't have enough gold.", {buttons:[{label:'OK', action:()=>{hideDialogue(); state='overworld';}}]});
+          showDialogue(`"Sorry friend, no coin, no cot."`, {buttons:[{label:'OK', action:()=>{hideDialogue(); state='overworld';}}]});
         }
       }},
       {label:'LEAVE', action:()=>{ hideDialogue(); state='overworld'; }}
     ]}
   );
 }
+let currentShopTab = 'consumables';
 function openShop(){
-  state='dialog';
-  renderShop();
+  state='shop';
+  currentShopTab = 'consumables';
+  renderShopWindow();
+  shopScreen.style.display='flex';
+  bringToFront(shopScreen);
 }
+function closeShop(){
+  shopScreen.style.display='none';
+  invTooltip.style.display='none';
+  if(state==='shop') state='overworld';
+}
+window.__ff1_closeShop = ()=> closeShop();
+window.__ff1_shopTab = (tab)=>{ currentShopTab = tab; renderShopWindow(); };
 function buyGear(id){
   const def = EQUIP_DEFS[id];
   if(player.gold < def.price){ renderShop(`Not enough gold for the ${def.name}.`); return; }
@@ -2395,14 +3189,16 @@ window.__ff1_shopHover = (e, id)=>{
 };
 window.__ff1_shopUnhover = ()=>{ invTooltip.style.display='none'; };
 function renderShop(note){
-  const noteHtml = note ? `<div style="color:var(--gold); margin-top:4px;">${note}</div>` : '';
+  renderShopWindow(note);
+}
+function renderShopWindow(note){
+  const coin = `<svg width="8" height="8" viewBox="0 0 24 24" style="vertical-align:-1px;">
+    <circle cx="12" cy="12" r="10" fill="#ffd54a" stroke="#b8860b" stroke-width="2"/>
+    <circle cx="12" cy="12" r="5.5" fill="none" stroke="#b8860b" stroke-width="1.5"/>
+  </svg>`;
   function shopBtn(onclick, id, iconHtml, price){
     const afford = player.gold >= price;
     const borderColor = EQUIP_DEFS[id] ? rarityColorOf(id) : RARITY_COLORS.common;
-    const coin = `<svg width="8" height="8" viewBox="0 0 24 24" style="vertical-align:-1px;">
-      <circle cx="12" cy="12" r="10" fill="#ffd54a" stroke="#b8860b" stroke-width="2"/>
-      <circle cx="12" cy="12" r="5.5" fill="none" stroke="#b8860b" stroke-width="1.5"/>
-    </svg>`;
     return `<button class="shopBtn" ${afford?'':'disabled'} style="border-color:${borderColor};" onclick="${onclick}"
       onmouseenter="window.__ff1_shopHover(event,'${id}')"
       onmousemove="window.__ff1_moveTooltip(event)"
@@ -2411,11 +3207,15 @@ function renderShop(note){
       <span class="shopPrice">${coin} ${price} G</span>
     </button>`;
   }
-  function shopSection(label, buttonsHtml){
-    return `<div class="shopSection">
-      <div class="shopSectionLabel">${label}</div>
-      <div class="shopGrid">${buttonsHtml}</div>
-    </div>`;
+  function sellBtn(key, iconHtml, value, qtyLabel, borderColor){
+    return `<button class="shopBtn" style="border-color:${borderColor};" onclick="window.__ff1_sellItem('${key}')"
+      onmouseenter="window.__ff1_sellHover(event,'${key}')"
+      onmousemove="window.__ff1_moveTooltip(event)"
+      onmouseleave="window.__ff1_shopUnhover()">
+      <span class="shopIcon">${iconHtml}</span>
+      ${qtyLabel ? `<span style="font-size:7px; opacity:0.8;">${qtyLabel}</span>` : ''}
+      <span class="shopPrice">${coin} ${value} G</span>
+    </button>`;
   }
   function gearButtonsFor(slot){
     return Object.keys(EQUIP_DEFS)
@@ -2423,21 +3223,45 @@ function renderShop(note){
       .map(id=> shopBtn(`window.__ff1_buyGear('${id}')`, id, gearIconSVG(id), EQUIP_DEFS[id].price))
       .join('');
   }
-  showDialogue(
-    `<b style="color:var(--gold)">SHOP</b> — Gold: ${player.gold}
-    ${shopSection('CONSUMABLES',
-      shopBtn(`window.__ff1_buyPotion()`, 'potion', consumableIconSVG('potion'), 15) +
-      shopBtn(`window.__ff1_buyEther()`, 'ether', consumableIconSVG('ether'), 20)
-    )}
-    ${shopSection('WEAPONS', gearButtonsFor('weapon'))}
-    ${shopSection('ARMOR', gearButtonsFor('armor'))}
-    ${shopSection('ACCESSORIES', gearButtonsFor('accessory'))}
-    ${noteHtml}`,
-    {buttons:[
-      {label:'SELL ITEMS', action:()=> renderSellShop()},
-      {label:'LEAVE', action:()=>{ hideDialogue(); state='overworld'; }}
-    ]}
-  );
+  const tabs = [
+    {id:'consumables', label:'CONSUMABLES'},
+    {id:'weapon', label:'WEAPONS'},
+    {id:'armor', label:'ARMOR'},
+    {id:'accessory', label:'ACCESSORIES'},
+    {id:'sell', label:'SELL'}
+  ];
+  const tabBar = tabs.map(t=>
+    `<button class="shopTab${currentShopTab===t.id?' active':''}" onclick="window.__ff1_shopTab('${t.id}')">${t.label}</button>`
+  ).join('');
+  let content = '';
+  if(currentShopTab==='consumables'){
+    content = shopBtn(`window.__ff1_buyPotion()`, 'potion', consumableIconSVG('potion'), 15) +
+              shopBtn(`window.__ff1_buyEther()`, 'ether', consumableIconSVG('ether'), 20);
+  } else if(currentShopTab==='weapon' || currentShopTab==='armor' || currentShopTab==='accessory'){
+    content = gearButtonsFor(currentShopTab) || '<span style="opacity:0.6; font-size:9px;">Nothing in stock.</span>';
+  } else if(currentShopTab==='sell'){
+    let btns = '';
+    if(player.potions>0) btns += sellBtn('potion', consumableIconSVG('potion'), SELL_VALUES.common, `x${player.potions}`, RARITY_COLORS.common);
+    if(player.ethers>0) btns += sellBtn('ether', consumableIconSVG('ether'), SELL_VALUES.common, `x${player.ethers}`, RARITY_COLORS.common);
+    player.gear.forEach(g=>{
+      const d = EQUIP_DEFS[g.id];
+      const equipped = isEquipped(g.uid);
+      const isQuest = d.slot==='quest';
+      btns += sellBtn('g'+g.uid, gearIconSVG(g.id), isQuest ? '—' : sellValueOf(d.rarity), isQuest ? 'QUEST' : (equipped?'EQUIPPED':''), rarityColorOf(g.id));
+    });
+    content = btns || '<span style="opacity:0.6; font-size:9px;">You have nothing to sell.</span>';
+  }
+  shopScreen.innerHTML = `
+    <div class="invTitleBar" id="shopTitleBar">
+      <span>${coin} SHOP — ${player.gold} G</span>
+      <button type="button" class="invCloseBtn" onclick="window.__ff1_closeShop()">✕</button>
+    </div>
+    <div class="shopBody">
+      <div class="shopTabs">${tabBar}</div>
+      <div class="shopGrid">${content}</div>
+      <div class="shopNote">${note||''}</div>
+    </div>`;
+  makeWindowDraggable(shopScreen, 'shopTitleBar');
 }
 window.__ff1_buyGear = (id)=> buyGear(id);
 window.__ff1_buyPotion = ()=>{
@@ -2453,39 +3277,8 @@ window.__ff1_buyEther = ()=>{
 const SELL_VALUES = { common:8, uncommon:25, rare:60, epic:130, legendary:250, relic:500 };
 function sellValueOf(rarity){ return SELL_VALUES[rarity] || 5; }
 function renderSellShop(note){
-  const noteHtml = note ? `<div style="color:var(--gold); margin-top:4px;">${note}</div>` : '';
-  const coin = `<svg width="8" height="8" viewBox="0 0 24 24" style="vertical-align:-1px;">
-    <circle cx="12" cy="12" r="10" fill="#ffd54a" stroke="#b8860b" stroke-width="2"/>
-    <circle cx="12" cy="12" r="5.5" fill="none" stroke="#b8860b" stroke-width="1.5"/>
-  </svg>`;
-  function sellBtn(key, iconHtml, value, qtyLabel, borderColor){
-    return `<button class="shopBtn" style="border-color:${borderColor};" onclick="window.__ff1_sellItem('${key}')"
-      onmouseenter="window.__ff1_sellHover(event,'${key}')"
-      onmousemove="window.__ff1_moveTooltip(event)"
-      onmouseleave="window.__ff1_shopUnhover()">
-      <span class="shopIcon">${iconHtml}</span>
-      ${qtyLabel ? `<span style="font-size:7px; opacity:0.8;">${qtyLabel}</span>` : ''}
-      <span class="shopPrice">${coin} ${value} G</span>
-    </button>`;
-  }
-  let btns = '';
-  if(player.potions>0) btns += sellBtn('potion', consumableIconSVG('potion'), SELL_VALUES.common, `x${player.potions}`, RARITY_COLORS.common);
-  if(player.ethers>0) btns += sellBtn('ether', consumableIconSVG('ether'), SELL_VALUES.common, `x${player.ethers}`, RARITY_COLORS.common);
-  player.gear.forEach(g=>{
-    const d = EQUIP_DEFS[g.id];
-    const equipped = isEquipped(g.uid);
-    const isQuest = d.slot==='quest';
-    btns += sellBtn('g'+g.uid, gearIconSVG(g.id), isQuest ? '—' : sellValueOf(d.rarity), isQuest ? 'QUEST' : (equipped?'EQUIPPED':''), rarityColorOf(g.id));
-  });
-  showDialogue(
-    `<b style="color:var(--gold)">SELL ITEMS</b> — Gold: ${player.gold}<br>
-    <span style="font-size:9px; opacity:0.8;">Click an item to sell it. Sell prices are based on rarity.</span>
-    <div class="shopGrid" style="margin-top:6px;">${btns || '<span style="opacity:0.6; font-size:9px;">You have nothing to sell.</span>'}</div>${noteHtml}`,
-    {buttons:[
-      {label:'BUY ITEMS', action:()=> renderShop()},
-      {label:'LEAVE', action:()=>{ hideDialogue(); state='overworld'; }}
-    ]}
-  );
+  currentShopTab = 'sell';
+  renderShopWindow(note);
 }
 window.__ff1_sellItem = (key)=>{
   if(key==='potion'){
@@ -2553,6 +3346,7 @@ function beginBattle(template, isBoss){
   closeInventory();
   closeCharSheet();
   closeSkillScreen();
+  closeShop();
   statBar.style.display='none';
   playerStatus.style.display='block';
   updatePlayerStatusPanel();
@@ -2900,10 +3694,10 @@ function drawBattle(){
 function frame(){
   animTimer++;
   const standTile = tileAt(player.x, player.y);
-  const canInteract = state==='overworld' && ((standTile===6 || standTile===7 || standTile===8) || adjacentToVine());
+  const canInteract = state==='overworld' && ((standTile===6 || standTile===7 || standTile===8) || adjacentToVine() || nearInnkeeper() || nearShopkeeper() || !!nearPatron());
   btnInteractEl.classList.toggle('canInteract', canInteract);
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(state==='overworld' || (state==='dialog' && battle===null)){
+  if(state==='overworld' || state==='shop' || (state==='dialog' && battle===null)){
     drawOverworld();
   }
   if(state==='title'){
