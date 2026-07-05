@@ -765,6 +765,7 @@
         <div class="hpbar-outer" style="width:140px;"><div class="expbar-inner" id="expBarInner" style="width:0%"></div></div>
       </div>
     </div>
+    <div class="box" id="zoneBox" style="align-self:flex-start; color:var(--gold); letter-spacing:1px;">The Marketplace</div>
   </div>
 
   <div id="enemyStatus"></div>
@@ -878,6 +879,8 @@ function buildMap(){
   g[5][16]=11; g[6][16]=11;
   // magical vine sealing the eastern pass (right of the castle)
   g[7][18]=12;
+  // wooden pier extending into the right lake
+  g[9][15]=27; g[10][15]=27;
   return g;
 }
 function buildDesertMap(){
@@ -969,6 +972,7 @@ let map = overworldMap;
 const INNKEEPER = {x:10, y:4};
 const SHOPKEEPER = {x:10, y:4};
 const CHEST = {x:11, y:5};
+const FISHERMAN = {x:13, y:9};
 const INN_PATRONS = [
   {x:6,  y:8,  tunic:'#8f2b2b', hair:'#1a1a1a'},
   {x:12, y:9,  tunic:'#2b7a3a', hair:'#d9b45c'},
@@ -982,9 +986,21 @@ const PATRON_LINES = [
   `"Best stew in the realm, right here. Don't tell my wife I said so."`,
   `"Rested legs walk farther. Ten gold's a bargain, friend."`
 ];
+const ZONE_NAMES = {
+  overworld:'The Marketplace',
+  desert:'The Desert',
+  inn:'The Inn',
+  store:'The Shop',
+  room:'The Inn'
+};
+function updateZoneBox(){
+  const el = document.getElementById('zoneBox');
+  if(el) el.textContent = ZONE_NAMES[player.zone] || 'The Marketplace';
+}
 function setActiveZone(zone){
   player.zone = zone;
   map = (zone==='desert') ? desertMap : (zone==='inn') ? innMap : (zone==='store') ? storeMap : (zone==='room') ? roomMap : overworldMap;
+  updateZoneBox();
 }
 function applyVineState(){
   if(player.vineDestroyed){
@@ -1200,6 +1216,7 @@ function updateStatBar(){
   if(typeof charSheetScreen!=='undefined' && charSheetScreen.style.display==='flex') renderCharSheet();
   if(typeof skillScreen!=='undefined' && skillScreen.style.display==='flex') renderSkillScreen();
   if(typeof persistSave==='function') persistSave();
+  if(typeof updateZoneBox==='function') updateZoneBox();
   updatePlayerStatusPanel();
 }
 updateStatBar();
@@ -1236,7 +1253,7 @@ function hideMenu(){ menuPanel.style.display='none'; menuPanel.innerHTML=''; }
 
 // ---------- OVERWORLD RENDER ----------
 const TILE_COLORS = {
-  0:'#1c6b2e', 1:'#c2a366', 2:'#0d3a17', 3:'#2454a8', 4:'#8a6a45', 5:'#5b5b6b', 6:'#d9b779', 7:'#d9b779', 8:'#4a4a52', 11:'#7d7d88', 12:'#c2a366', 13:'#c2a366', 14:'#d8b96a', 15:'#d8b96a', 16:'#9a6a38', 17:'#4a3018', 18:'#7a4a20', 19:'#9a6a38', 20:'#9a6a38', 21:'#050508', 22:'#4a3018', 23:'#4a3018', 24:'#9a6a38', 25:'#4a3018', 26:'#9a6a38'
+  0:'#1c6b2e', 1:'#c2a366', 2:'#0d3a17', 3:'#2454a8', 4:'#8a6a45', 5:'#5b5b6b', 6:'#d9b779', 7:'#d9b779', 8:'#4a4a52', 11:'#7d7d88', 12:'#c2a366', 13:'#c2a366', 14:'#d8b96a', 15:'#d8b96a', 16:'#9a6a38', 17:'#4a3018', 18:'#7a4a20', 19:'#9a6a38', 20:'#9a6a38', 21:'#050508', 22:'#4a3018', 23:'#4a3018', 24:'#9a6a38', 25:'#4a3018', 26:'#9a6a38', 27:'#2454a8'
 };
 function drawTile(x,y,t){
   const px=x*TS, py=y*TS;
@@ -1696,6 +1713,35 @@ function drawTile(x,y,t){
     const clasp = (animTimer%50<25)?'#ffd54a':'#d8b45a';
     ctx.fillStyle=clasp;
     ctx.fillRect(px+14, py+15, 4, 6);
+  } else if(t===27){ // wooden pier over water
+    // water base
+    ctx.fillStyle='#2454a8';
+    ctx.fillRect(px,py,TS,TS);
+    // support posts sunk into the water
+    ctx.fillStyle='#4a3018';
+    ctx.fillRect(px+4, py+6, 4, TS-8);
+    ctx.fillRect(px+24, py+6, 4, TS-8);
+    // plank deck (slightly narrower than the tile)
+    ctx.fillStyle='#a5763c';
+    ctx.fillRect(px+2, py, TS-4, TS);
+    ctx.strokeStyle='#7a5426';
+    ctx.lineWidth=1;
+    for(let i=0;i<5;i++){
+      ctx.beginPath();
+      ctx.moveTo(px+2, py+i*7+3);
+      ctx.lineTo(px+TS-2, py+i*7+3);
+      ctx.stroke();
+    }
+    // nail dots
+    ctx.fillStyle='#5e3f22';
+    ctx.fillRect(px+5, py+5, 2, 2);
+    ctx.fillRect(px+25, py+12, 2, 2);
+    ctx.fillRect(px+5, py+19, 2, 2);
+    ctx.fillRect(px+25, py+26, 2, 2);
+    // water lapping at the edges
+    ctx.fillStyle='rgba(122,167,255,0.5)';
+    ctx.fillRect(px, py+((animTimer/12|0)%2?8:20), 2, 4);
+    ctx.fillRect(px+TS-2, py+((animTimer/12|0)%2?18:6), 2, 4);
   } else if(t===21){ // void outside the room
     ctx.fillStyle='#050508';
     ctx.fillRect(px,py,TS,TS);
@@ -1884,7 +1930,23 @@ function drawPlayerSprite(px,py){
   ctx.fillRect(px+17, py+24+bob, 6, 6);
   // equipped weapon
   const weaponId = equippedGearId('weapon');
-  if(weaponId){
+  if(weaponId==='fishing_pole'){
+    // slim rod held at the side, angled per facing
+    ctx.strokeStyle='#8a5a2c';
+    ctx.lineWidth=2.5;
+    ctx.beginPath();
+    if(player.facing==='right'){ ctx.moveTo(px+22, py+20+bob); ctx.lineTo(px+31, py+4+bob); }
+    else if(player.facing==='left'){ ctx.moveTo(px+10, py+20+bob); ctx.lineTo(px+1, py+4+bob); }
+    else if(player.facing==='up'){ ctx.moveTo(px+26, py+22+bob); ctx.lineTo(px+29, py+2+bob); }
+    else { ctx.moveTo(px+26, py+12+bob); ctx.lineTo(px+29, py+30+bob); }
+    ctx.stroke();
+    ctx.lineWidth=1;
+    // reel dot near the grip
+    ctx.fillStyle='#5e3f22';
+    if(player.facing==='right') ctx.fillRect(px+22, py+17+bob, 3, 3);
+    else if(player.facing==='left') ctx.fillRect(px+7, py+17+bob, 3, 3);
+    else ctx.fillRect(px+25, py+18+bob, 3, 3);
+  } else if(weaponId){
     const blade = WEAPON_BLADE_COLORS[weaponId] || '#c98f4a';
     const guard = '#8a5a2c', grip = '#5e3f22';
     if(player.facing==='right'){
@@ -2196,6 +2258,111 @@ function drawPathConnector(){
   }
 }
 
+function drawFisherman(){
+  const px = FISHERMAN.x*TS, py = FISHERMAN.y*TS;
+  const bob = (animTimer%90<45)?0:1;
+  // --- umbrella chair one tile to the left ---
+  {
+    const cx = (FISHERMAN.x-1)*TS, cy = FISHERMAN.y*TS;
+    // shade cast by the umbrella
+    ctx.fillStyle='rgba(0,0,0,0.18)';
+    ctx.beginPath(); ctx.ellipse(cx+15, cy+24, 13, 5, 0, 0, Math.PI*2); ctx.fill();
+    // lounge chair (side view, facing the lake)
+    ctx.fillStyle='#c98f4a'; // wooden frame seat
+    ctx.fillRect(cx+10, cy+18, 15, 3);
+    ctx.fillStyle='#8f2b2b'; // canvas seat + slanted backrest
+    ctx.fillRect(cx+11, cy+16, 13, 3);
+    ctx.beginPath();
+    ctx.moveTo(cx+11, cy+18);
+    ctx.lineTo(cx+6, cy+8);
+    ctx.lineTo(cx+9, cy+7);
+    ctx.lineTo(cx+14, cy+17);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle='#8a5a2c'; // legs
+    ctx.fillRect(cx+11, cy+21, 2, 6);
+    ctx.fillRect(cx+22, cy+21, 2, 6);
+    // umbrella pole (tilted over the chair)
+    ctx.strokeStyle='#8a5a2c';
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(cx+22, cy+24);
+    ctx.lineTo(cx+15, cy+4);
+    ctx.stroke();
+    ctx.lineWidth=1;
+    // canopy: red with white wedges
+    ctx.fillStyle='#c23b3b';
+    ctx.beginPath();
+    ctx.moveTo(cx+2, cy+7);
+    ctx.quadraticCurveTo(cx+15, cy-8, cx+28, cy+3);
+    ctx.quadraticCurveTo(cx+21, cy+5, cx+15, cy+6);
+    ctx.quadraticCurveTo(cx+8, cy+8, cx+2, cy+7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle='#f0e8dc';
+    ctx.beginPath();
+    ctx.moveTo(cx+9, cy+7);
+    ctx.quadraticCurveTo(cx+12, cy-4, cx+15, cy-5);
+    ctx.quadraticCurveTo(cx+14, cy+2, cx+15, cy+6);
+    ctx.quadraticCurveTo(cx+12, cy+7, cx+9, cy+7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle='#a02e2e'; // canopy tip
+    ctx.beginPath(); ctx.arc(cx+15, cy+2, 1.6, 0, Math.PI*2); ctx.fill();
+  }
+  // --- tackle box one tile below ---
+  {
+    const tx = FISHERMAN.x*TS, ty = (FISHERMAN.y+1)*TS;
+    ctx.fillStyle='rgba(0,0,0,0.18)';
+    ctx.beginPath(); ctx.ellipse(tx+16, ty+22, 10, 3.5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#2b6a3a'; // box body
+    ctx.fillRect(tx+8, ty+12, 16, 9);
+    ctx.fillStyle='#1e4f2a'; // lid
+    ctx.fillRect(tx+8, ty+9, 16, 4);
+    ctx.fillStyle='rgba(255,255,255,0.2)'; // lid highlight
+    ctx.fillRect(tx+9, ty+9, 14, 1.5);
+    // handle
+    ctx.strokeStyle='#1e4f2a';
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.arc(tx+16, ty+9, 4, Math.PI, 0);
+    ctx.stroke();
+    ctx.lineWidth=1;
+    // gold latch + a little bobber sticker
+    ctx.fillStyle='#ffd54a';
+    ctx.fillRect(tx+15, ty+12, 2.5, 3);
+    ctx.fillStyle='#dc2626';
+    ctx.beginPath(); ctx.arc(tx+21, ty+16, 1.7, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(tx+21, ty+15.4, 0.8, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.fillStyle='#f4c98a'; // skin
+  ctx.fillRect(px+11, py+4+bob, 10, 8);
+  ctx.fillStyle='#d8b45a'; // straw hat
+  ctx.fillRect(px+8, py+3+bob, 16, 3);
+  ctx.fillRect(px+11, py+0+bob, 10, 4);
+  ctx.fillStyle='#2b6a6a'; // teal overalls
+  ctx.fillRect(px+8, py+12+bob, 16, 12);
+  ctx.fillStyle='#1e4f4f'; // strap
+  ctx.fillRect(px+11, py+12+bob, 3, 6);
+  ctx.fillStyle='#8a5a2c'; // legs
+  ctx.fillRect(px+9, py+24+bob, 6, 6);
+  ctx.fillRect(px+17, py+24+bob, 6, 6);
+  // his own rod resting over his shoulder, line into the lake
+  ctx.strokeStyle='#8a5a2c';
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.moveTo(px+23, py+18+bob);
+  ctx.lineTo(px+31, py+2+bob);
+  ctx.stroke();
+  ctx.strokeStyle='rgba(240,240,240,0.6)';
+  ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(px+31, py+2+bob);
+  ctx.lineTo(px+34, py+22);
+  ctx.stroke();
+}
+
 function drawPatrons(){
   INN_PATRONS.forEach((p, i)=>{
     const px = p.x*TS, py = p.y*TS;
@@ -2227,6 +2394,11 @@ function drawOverworld(){
       }
     drawBuildingSigns();
     drawLakes();
+    // redraw the pier planks over the lake water
+    for(let y=0;y<ROWS;y++)
+      for(let x=0;x<COLS;x++)
+        if(map[y][x]===27) drawTile(x,y,27);
+    drawFisherman();
   }
   if(player.zone==='inn'){ drawInnkeeper(); drawPatrons(); }
   if(player.zone==='store') drawShopkeeper();
@@ -2245,6 +2417,8 @@ function tryMove(dx,dy){
   const nx=player.x+dx, ny=player.y+dy;
   const t = tileAt(nx,ny);
   if(isBlocked(t)) return;
+  if(player.zone==='overworld' && nx===FISHERMAN.x && ny===FISHERMAN.y) return; // fisherman blocks his fishing spot
+  if(player.zone==='overworld' && ((nx===FISHERMAN.x-1 && ny===FISHERMAN.y) || (nx===FISHERMAN.x && ny===FISHERMAN.y+1))) return; // his chair and tackle box
   if(player.zone==='inn' && nx===INNKEEPER.x && ny===INNKEEPER.y) return; // innkeeper blocks the way
   if(player.zone==='inn' && INN_PATRONS.some(p=>p.x===nx && p.y===ny)) return; // patrons block the way
   if(player.zone==='store' && nx===SHOPKEEPER.x && ny===SHOPKEEPER.y) return; // shopkeeper blocks the way
@@ -2487,6 +2661,73 @@ function nearChest(){
   if(player.zone!=='room') return false;
   return (Math.abs(player.x-CHEST.x) + Math.abs(player.y-CHEST.y)) <= 1;
 }
+// ---------- FISHERMAN'S SHOP (pole + fish only) ----------
+function openFishermanShop(){
+  state='dialog';
+  renderFishermanShop();
+}
+function renderFishermanShop(note){
+  const coin = `<svg width="8" height="8" viewBox="0 0 24 24" style="vertical-align:-1px;">
+    <circle cx="12" cy="12" r="10" fill="#ffd54a" stroke="#b8860b" stroke-width="2"/>
+    <circle cx="12" cy="12" r="5.5" fill="none" stroke="#b8860b" stroke-width="1.5"/>
+  </svg>`;
+  const poleDef = EQUIP_DEFS.fishing_pole;
+  const afford = player.gold >= poleDef.price;
+  const poleBtn = `<button class="shopBtn" ${afford?'':'disabled'} style="border-color:${rarityColorOf('fishing_pole')};" onclick="window.__ff1_buyPole()"
+    onmouseenter="window.__ff1_shopHover(event,'fishing_pole')"
+    onmousemove="window.__ff1_moveTooltip(event)"
+    onmouseleave="window.__ff1_shopUnhover()">
+    <span class="shopIcon">${gearIconSVG('fishing_pole')}</span>
+    <span class="shopPrice">${coin} ${poleDef.price} G</span>
+  </button>`;
+  let fishBtns = '';
+  Object.keys(FISH_DEFS).forEach(kind=>{
+    if(consQty(kind)>0){
+      const f = FISH_DEFS[kind];
+      fishBtns += `<button class="shopBtn" style="border-color:${RARITY_COLORS[f.rarity]};" onclick="window.__ff1_fishermanSell('${kind}')"
+        onmouseenter="window.__ff1_sellHover(event,'${kind}')"
+        onmousemove="window.__ff1_moveTooltip(event)"
+        onmouseleave="window.__ff1_shopUnhover()">
+        <span class="shopIcon">${consumableIconSVG(kind)}</span>
+        <span style="font-size:7px; opacity:0.8;">x${consQty(kind)}</span>
+        <span class="shopPrice">${coin} ${f.sell} G</span>
+      </button>`;
+    }
+  });
+  const noteHtml = note ? `<div style="color:var(--gold); margin-top:4px;">${note}</div>` : '';
+  showDialogue(
+    `<b style="color:var(--gold)">FISHERMAN</b> — Gold: ${player.gold}<br>
+    <span style="font-size:9px; opacity:0.85;">"Fine day for it! Need a pole, friend? And I'll buy whatever's bitin'."</span>
+    <div class="shopSection"><div class="shopSectionLabel">FOR SALE</div><div class="shopGrid">${poleBtn}</div></div>
+    <div class="shopSection"><div class="shopSectionLabel">I'LL BUY YOUR FISH</div><div class="shopGrid">${fishBtns || '<span style="opacity:0.6; font-size:9px;">No fish in your bag — cast a line!</span>'}</div></div>
+    ${noteHtml}`,
+    {buttons:[{label:'LEAVE', action:()=>{ hideDialogue(); state='overworld'; }}]}
+  );
+}
+window.__ff1_buyPole = ()=>{
+  const def = EQUIP_DEFS.fishing_pole;
+  if(player.gold < def.price){ renderFishermanShop('Not enough gold, friend.'); return; }
+  if(!addGearToInventory('fishing_pole')){ renderFishermanShop('Your inventory is full!'); return; }
+  player.gold -= def.price;
+  updateStatBar();
+  renderFishermanShop(`One Fishing Pole! Equip it (I), then press ACTION by the water.`);
+};
+window.__ff1_fishermanSell = (kind)=>{
+  if(!isFishKind(kind) || consQty(kind)<=0) return;
+  const f = FISH_DEFS[kind];
+  consAdd(kind, -1);
+  player.gold += f.sell;
+  updateStatBar();
+  renderFishermanShop(`Sold a ${f.name} for ${f.sell} G!`);
+};
+
+function nearFisherman(){
+  if(player.zone!=='overworld') return false;
+  return (Math.abs(player.x-FISHERMAN.x) + Math.abs(player.y-FISHERMAN.y)) <= 1;
+}
+function hasPoleEquipped(){
+  return equippedGearId('weapon')==='fishing_pole';
+}
 function interact(){
   if(state==='fishing'){ attemptCatch(); return; }
   if(state==='overworld'){
@@ -2507,8 +2748,21 @@ function interact(){
     if(t===6) enterInn();
     else if(t===7) enterStore();
     else if(t===8) enterBoss();
-    else if(adjacentToVine()) vineDialog();
-    else if(adjacentToWater()) startFishing();
+    else {
+      const dirs = {right:[1,0], left:[-1,0], down:[0,1], up:[0,-1]};
+      const fd = dirs[player.facing];
+      const facingWater = fd && tileAt(player.x+fd[0], player.y+fd[1])===3;
+      if(facingWater){
+        if(hasPoleEquipped()) startFishing();
+        else fishingToast = {text:'You need a Fishing Pole equipped!', color:'#9fb3ff', until: performance.now()+1800};
+      }
+      else if(nearFisherman()) openFishermanShop();
+      else if(adjacentToVine()) vineDialog();
+      else if(adjacentToWater()){
+        if(hasPoleEquipped()) startFishing();
+        else fishingToast = {text:'You need a Fishing Pole equipped!', color:'#9fb3ff', until: performance.now()+1800};
+      }
+    }
   }
 }
 
@@ -2641,6 +2895,7 @@ const RARITY_COLORS = {
 };
 function rarityLabel(r){ return r.charAt(0).toUpperCase()+r.slice(1); }
 const EQUIP_DEFS = {
+  fishing_pole:   {name:'Fishing Pole',   slot:'weapon', atk:1,  desc:'+1 ATK — required to fish', price:25, rarity:'common', shop:false},
   bronze_sword:   {name:'Bronze Sword',   slot:'weapon', atk:3,  desc:'+3 ATK',  price:30,  rarity:'common'},
   iron_sword:     {name:'Iron Sword',     slot:'weapon', atk:6,  desc:'+6 ATK',  price:70,  rarity:'uncommon'},
   steel_sword:    {name:'Steel Sword',    slot:'weapon', atk:10, desc:'+10 ATK', price:150, rarity:'rare'},
@@ -2798,6 +3053,14 @@ function consumableIconSVG(kind){
 }
 function gearIconSVG(id){
   const def = EQUIP_DEFS[id];
+  if(id==='fishing_pole'){
+    return `<svg width="20" height="20" viewBox="0 0 24 24">
+      <line x1="4" y1="21" x2="19" y2="3" stroke="#8a5a2c" stroke-width="2.4" stroke-linecap="round"/>
+      <circle cx="8" cy="17" r="2.4" fill="#5e3f22" stroke="#3f2a15" stroke-width="1"/>
+      <path d="M19 3 Q21 10 18 15" stroke="#dfe6f0" stroke-width="1" fill="none"/>
+      <path d="M18 15 q-2.5 2 -0.5 3.5" stroke="#cfd6e6" stroke-width="1.4" fill="none"/>
+    </svg>`;
+  }
   if(def && def.slot==='weapon'){
     const blade = WEAPON_BLADE_COLORS[id] || '#c98f4a';
     return `<svg width="20" height="20" viewBox="0 0 24 24">
@@ -4003,7 +4266,7 @@ function drawBattle(){
 function frame(){
   animTimer++;
   const standTile = tileAt(player.x, player.y);
-  const canInteract = (state==='overworld' && ((standTile===6 || standTile===7 || standTile===8) || adjacentToVine() || !!adjacentToWater() || nearInnkeeper() || nearShopkeeper() || !!nearPatron() || nearChest()))
+  const canInteract = (state==='overworld' && ((standTile===6 || standTile===7 || standTile===8) || adjacentToVine() || !!adjacentToWater() || nearFisherman() || nearInnkeeper() || nearShopkeeper() || !!nearPatron() || nearChest()))
     || (state==='fishing' && fishing && fishing.phase==='bite');
   btnInteractEl.classList.toggle('canInteract', canInteract);
   ctx.clearRect(0,0,canvas.width,canvas.height);
