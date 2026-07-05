@@ -5,7 +5,7 @@ TO DO LIST:
 
 -add diablo style waypoint system
 
-# v0.03
+# v0.03 (7/5/2026)
 -added storage with additional purchasable tabs and renamable tabs
 -added fishing system
 
