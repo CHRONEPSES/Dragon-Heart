@@ -426,6 +426,17 @@
     color:var(--gold);
     background:#1a2f6e;
   }
+  .storageTab.locked{
+    opacity:0.45;
+    border-color:#333;
+    cursor:default;
+  }
+  .storageTab.nextUnlock{
+    opacity:0.8;
+    border-color:#8a6a1a;
+    cursor:pointer;
+    animation:skillGlow 1.6s ease-in-out infinite;
+  }
   .storageRename{
     display:flex;
     align-items:center;
@@ -904,8 +915,8 @@ function buildInnMap(){
   g[2][7]=23;
   // tavern tables
   g[8][7]=24; g[8][12]=24; g[10][12]=24;
-  // door in the east wall to the guest room
-  g[8][14]=25;
+  // door in the west wall (near the fireplace) to the guest room
+  g[3][5]=25;
   // exit rug in the south wall
   g[11][9]=19;
   return g;
@@ -1009,7 +1020,8 @@ const player = {
   gear:[{uid:1, id:'bronze_sword', gridSlot:2}],
   equipped:{ weapon:null, armor:null, accessory:null },
   zone:'overworld',
-  vineDestroyed:false
+  vineDestroyed:false,
+  fishCounts:{}
 };
 
 // ---------- ENEMY DATA ----------
@@ -1157,6 +1169,7 @@ const charScreen = document.getElementById('charScreen');
 const invScreen = document.getElementById('invScreen');
 const charSheetScreen = document.getElementById('charSheetScreen');
 const shopScreen = document.getElementById('shopScreen');
+const storageScreen = document.getElementById('storageScreen');
 const gameWrapEl = document.getElementById('gameWrap');
 const btnInteractEl = document.getElementById('btnInteract');
 const invTooltip = document.createElement('div');
@@ -2243,8 +2256,8 @@ function tryMove(dx,dy){
     const from = player.zone;
     if(from==='room'){
       setActiveZone('inn');
-      player.x=13; player.y=8;
-      player.facing='left';
+      player.x=6; player.y=3;
+      player.facing='right';
     } else {
       setActiveZone('overworld');
       player.x = (from==='store') ? 8 : 3;
@@ -2345,11 +2358,145 @@ function patronDialog(){
     {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
   );
 }
+// ---------- FISHING ----------
+let fishing = null; // {tx,ty, phase:'waiting'|'bite', biteTime, biteExpire}
+let fishingToast = null; // {text, color, until}
+function adjacentToWater(){
+  if(player.zone!=='overworld') return null;
+  const dirs = {right:[1,0], left:[-1,0], down:[0,1], up:[0,-1]};
+  // prefer the tile the player is facing
+  const f = dirs[player.facing];
+  if(f && tileAt(player.x+f[0], player.y+f[1])===3) return {tx:player.x+f[0], ty:player.y+f[1]};
+  for(const k in dirs){
+    const d = dirs[k];
+    if(tileAt(player.x+d[0], player.y+d[1])===3) return {tx:player.x+d[0], ty:player.y+d[1]};
+  }
+  return null;
+}
+function startFishing(){
+  const spot = adjacentToWater();
+  if(!spot) return;
+  const now = performance.now();
+  fishing = {
+    tx:spot.tx, ty:spot.ty,
+    phase:'waiting',
+    biteTime: now + 1000 + Math.random()*3000,
+    biteExpire: 0
+  };
+  state='fishing';
+}
+function endFishing(text, color){
+  fishing = null;
+  state='overworld';
+  if(text) fishingToast = {text, color: color||'#e8e2d2', until: performance.now()+1600};
+}
+function cancelFishing(){ endFishing(null); }
+function rollFish(){
+  const r = Math.random();
+  let acc = 0;
+  for(const kind of Object.keys(FISH_DEFS)){
+    acc += FISH_DEFS[kind].chance;
+    if(r < acc) return kind;
+  }
+  return 'minnow';
+}
+function attemptCatch(){
+  if(!fishing) return;
+  if(fishing.phase==='waiting'){
+    endFishing('Too early! The fish got spooked...', '#9fb3ff');
+    return;
+  }
+  // bite window — success!
+  const kind = rollFish();
+  if(!ensureConsSlot(kind)){
+    endFishing('Your inventory is full!', 'var(--hplow)');
+    return;
+  }
+  consAdd(kind, 1);
+  const f = FISH_DEFS[kind];
+  updateStatBar();
+  if(isInvOpen()) renderInventoryGrid();
+  endFishing(`Caught a ${f.name}!`, RARITY_COLORS[f.rarity]);
+}
+function updateFishing(){
+  if(!fishing) return;
+  const now = performance.now();
+  if(fishing.phase==='waiting' && now >= fishing.biteTime){
+    fishing.phase = 'bite';
+    fishing.biteExpire = now + 900;
+  } else if(fishing.phase==='bite' && now > fishing.biteExpire){
+    endFishing('The fish slipped away...', '#9fb3ff');
+  }
+}
+function drawFishingOverlay(){
+  if(fishing){
+    const px = player.x*TS, py = player.y*TS;
+    const bx = fishing.tx*TS + TS/2;
+    const byBase = fishing.ty*TS + TS/2;
+    const bob = Math.sin(animTimer*0.12)*2;
+    const by = byBase + (fishing.phase==='bite' ? Math.sin(animTimer*0.7)*3 : bob);
+    // fishing line from the hero's hands to the bobber
+    ctx.strokeStyle='rgba(240,240,240,0.75)';
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(px+16, py+14);
+    ctx.quadraticCurveTo((px+16+bx)/2, Math.min(py+14, by)-10, bx, by-4);
+    ctx.stroke();
+    // bobber
+    ctx.fillStyle='#dc2626';
+    ctx.beginPath(); ctx.arc(bx, by, 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#ffffff';
+    ctx.beginPath(); ctx.arc(bx, by-1.2, 1.8, 0, Math.PI*2); ctx.fill();
+    if(fishing.phase==='waiting'){
+      // ripple + patience dots
+      const rip = (animTimer%50)/50;
+      ctx.strokeStyle=`rgba(255,255,255,${(0.5*(1-rip)).toFixed(2)})`;
+      ctx.beginPath(); ctx.arc(bx, by, 4+rip*8, 0, Math.PI*2); ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,0.8)';
+      ctx.font='10px "Courier New", monospace';
+      const dots = '.'.repeat(1+Math.floor(animTimer/20)%3);
+      ctx.fillText(dots, px+13, py-4);
+    } else {
+      // BITE! exclamation above the hero
+      const bounce = Math.abs(Math.sin(animTimer*0.5))*3;
+      ctx.fillStyle='#ff3b3b';
+      ctx.font='bold 16px "Courier New", monospace';
+      ctx.strokeStyle='#000';
+      ctx.lineWidth=3;
+      ctx.strokeText('!', px+13, py-4-bounce);
+      ctx.fillText('!', px+13, py-4-bounce);
+    }
+  }
+  if(fishingToast){
+    if(performance.now() > fishingToast.until){ fishingToast = null; }
+    else {
+      const px = player.x*TS, py = player.y*TS;
+      ctx.font='bold 10px "Courier New", monospace';
+      const w = ctx.measureText(fishingToast.text).width;
+      const tx = Math.max(4, Math.min(canvas.width-w-4, px+16-w/2));
+      ctx.strokeStyle='#000';
+      ctx.lineWidth=3;
+      ctx.strokeText(fishingToast.text, tx, py-8);
+      ctx.fillStyle = fishingToast.color.startsWith('var') ? '#ff6b6b' : fishingToast.color;
+      ctx.fillText(fishingToast.text, tx, py-8);
+    }
+  }
+}
+
+function nearChest(){
+  if(player.zone!=='room') return false;
+  return (Math.abs(player.x-CHEST.x) + Math.abs(player.y-CHEST.y)) <= 1;
+}
 function interact(){
+  if(state==='fishing'){ attemptCatch(); return; }
   if(state==='overworld'){
     if(player.zone==='inn'){
       if(nearInnkeeper()) innkeeperDialog();
       else if(nearPatron()) patronDialog();
+      return;
+    }
+    if(player.zone==='room'){
+      if(nearChest()) openStorage();
       return;
     }
     if(player.zone==='store'){
@@ -2361,11 +2508,13 @@ function interact(){
     else if(t===7) enterStore();
     else if(t===8) enterBoss();
     else if(adjacentToVine()) vineDialog();
+    else if(adjacentToWater()) startFishing();
   }
 }
 
 // ---------- INPUT ----------
 window.addEventListener('keydown', e=>{
+  if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return; // typing in a field
   if(state==='overworld'){
     if(['ArrowUp','w','W'].includes(e.key)) tryMove(0,-1);
     else if(['ArrowDown','s','S'].includes(e.key)) tryMove(0,1);
@@ -2375,11 +2524,14 @@ window.addEventListener('keydown', e=>{
     else if(e.key==='p'||e.key==='P') openSkillScreen();
     else if(e.key==='i'||e.key==='I') openInventory();
     else if(e.key==='c'||e.key==='C') toggleStatus();
-    else if(e.key==='Escape'){ closeInventory(); closeCharSheet(); closeSkillScreen(); }
+    else if(e.key==='Escape'){ closeInventory(); closeCharSheet(); closeSkillScreen(); closeStorage(); }
   } else if(state==='dialog' && battle===null){
     if(e.key==='Escape'){ hideDialogue(); state='overworld'; }
   } else if(state==='shop'){
     if(e.key==='Escape'||e.key==='e'||e.key==='E') closeShop();
+  } else if(state==='fishing'){
+    if(e.key==='e'||e.key==='E'||e.key===' ') attemptCatch();
+    else if(e.key==='Escape') cancelFishing();
   }
 });
 document.getElementById('btnUp').onclick=()=>tryMove(0,-1);
@@ -2404,7 +2556,7 @@ function bringToFront(winEl){
   topWindowZ++;
   winEl.style.zIndex = topWindowZ;
 }
-[invScreen, charSheetScreen, skillScreen, shopScreen].forEach(w=>{
+[invScreen, charSheetScreen, skillScreen, shopScreen, storageScreen].forEach(w=>{
   w.addEventListener('pointerdown', ()=>bringToFront(w), true);
 });
 
@@ -2568,15 +2720,47 @@ function addGearToInventory(id){
 }
 
 // occupant lookup: consumables (potion/ether) or gear
+// ---------- FISH & GENERALIZED CONSUMABLES ----------
+const FISH_DEFS = {
+  minnow:     {name:'Minnow',     rarity:'common',   heal:10, mp:0,  sell:5,  chance:0.60},
+  bass:       {name:'Bass',       rarity:'uncommon', heal:30, mp:0,  sell:20, chance:0.30},
+  golden_koi: {name:'Golden Koi', rarity:'rare',     heal:60, mp:10, sell:75, chance:0.10}
+};
+const CONSUMABLE_KINDS = ['potion','ether','minnow','bass','golden_koi'];
+function isFishKind(kind){ return !!FISH_DEFS[kind]; }
+function consQty(kind){
+  if(kind==='potion') return player.potions;
+  if(kind==='ether') return player.ethers;
+  return (player.fishCounts && player.fishCounts[kind]) || 0;
+}
+function consAdd(kind, n){
+  if(kind==='potion'){ player.potions += n; return; }
+  if(kind==='ether'){ player.ethers += n; return; }
+  if(!player.fishCounts) player.fishCounts = {};
+  player.fishCounts[kind] = ((player.fishCounts[kind]||0) + n);
+}
+// make sure a consumable kind has a valid, unoccupied inventory slot; returns false if the bag is full
+function ensureConsSlot(kind){
+  const s = player.itemSlots[kind];
+  const occupiedByOther = (slot)=>{
+    if(gearAtSlot(slot)) return true;
+    return CONSUMABLE_KINDS.some(k=> k!==kind && player.itemSlots[k]===slot && consQty(k)>0);
+  };
+  if(typeof s==='number' && !occupiedByOther(s)) return true;
+  for(let i=0;i<INV_SLOTS;i++){
+    if(!occupantAt(i)){ player.itemSlots[kind]=i; return true; }
+  }
+  return false;
+}
 function occupantAt(slot){
-  for(const t of ['potion','ether']){
+  for(const t of CONSUMABLE_KINDS){
     if(player.itemSlots[t]===slot && itemQty(t)>0) return {kind:t};
   }
   const g = gearAtSlot(slot);
   if(g) return {kind:'gear', uid:g.uid};
   return null;
 }
-function itemQty(type){ return type==='potion' ? player.potions : player.ethers; }
+function itemQty(type){ return consQty(type); }
 function itemIconSVG(occ){
   const kind = occ.kind;
   if(kind==='potion'){
@@ -2591,6 +2775,18 @@ function itemIconSVG(occ){
       <path d="M12 2 L19 12 L12 22 L5 12 Z" fill="#60a5fa"/>
       <path d="M12 2 L19 12 L12 12 Z" fill="#93c5fd"/>
       <path d="M12 12 L19 12 L12 22 Z" fill="#3b82f6"/>
+    </svg>`;
+  }
+  if(isFishKind(kind)){
+    const body = kind==='minnow' ? '#b8c4d0' : kind==='bass' ? '#4a8f3a' : '#ffb42a';
+    const belly = kind==='minnow' ? '#e2e8ee' : kind==='bass' ? '#8fc47a' : '#ffe08a';
+    return `<svg width="20" height="20" viewBox="0 0 24 24">
+      <ellipse cx="11" cy="12" rx="7" ry="4.5" fill="${body}"/>
+      <ellipse cx="11" cy="13.5" rx="6" ry="2.5" fill="${belly}"/>
+      <path d="M17 12 L22 8 L22 16 Z" fill="${body}"/>
+      <path d="M9 8 L12 5 L13 8 Z" fill="${body}"/>
+      <circle cx="7.5" cy="11" r="1.1" fill="#101820"/>
+      <path d="M5 12 Q6 13 5.5 14" stroke="rgba(0,0,0,0.3)" stroke-width="0.8" fill="none"/>
     </svg>`;
   }
   // gear icons by equip slot
@@ -2661,6 +2857,10 @@ function invFlashMsg(msg){
 function useInventoryItemAtSlot(slot){
   const occ = occupantAt(slot);
   if(!occ) return;
+  if(typeof isStorageOpen==='function' && isStorageOpen()){
+    depositFromInventory(slot);
+    return;
+  }
   if(occ.kind==='potion'){
     if(player.hp>=player.maxhp){ invFlashMsg('HP is already full!'); return; }
     player.potions--;
@@ -2673,6 +2873,14 @@ function useInventoryItemAtSlot(slot){
     player.mp = Math.min(player.maxmp, player.mp + 10);
     updateStatBar();
     invFlashMsg('Used an Ether and recovered MP!');
+  } else if(isFishKind(occ.kind)){
+    const f = FISH_DEFS[occ.kind];
+    if(player.hp>=player.maxhp && (!f.mp || player.mp>=player.maxmp)){ invFlashMsg('You are already at full strength!'); return; }
+    consAdd(occ.kind, -1);
+    player.hp = Math.min(player.maxhp, player.hp + f.heal);
+    if(f.mp) player.mp = Math.min(player.maxmp, player.mp + f.mp);
+    updateStatBar();
+    invFlashMsg(`Ate a ${f.name} and recovered ${f.heal} HP${f.mp?` and ${f.mp} MP`:''}!`);
   } else if(occ.kind==='gear'){
     toggleEquip(occ.uid);
   }
@@ -2693,6 +2901,16 @@ function moveOrSwapItem(occ, fromSlot, toSlot){
 function itemInfo(occ){
   if(occ.kind==='potion') return {name:'Potion', desc:`Restores ${25+player.potionHealBonus} HP when used.`, status:'Click to use.'};
   if(occ.kind==='ether') return {name:'Ether', desc:'Restores 10 MP when used.', status:'Click to use.'};
+  if(isFishKind(occ.kind)){
+    const f = FISH_DEFS[occ.kind];
+    const rc = RARITY_COLORS[f.rarity];
+    return {
+      name: f.name,
+      color: rc,
+      desc: `<span style="color:${rc}">${rarityLabel(f.rarity)}</span> <span style="color:#9fb3ff">Fish</span><br>Eat to restore ${f.heal} HP${f.mp?` and ${f.mp} MP`:''}.`,
+      status: 'Click to eat.'
+    };
+  }
   const piece = gearByUid(occ.uid);
   const def = EQUIP_DEFS[piece.id];
   const isQuest = def.slot==='quest';
@@ -2706,6 +2924,7 @@ function itemInfo(occ){
   };
 }
 function renderInventoryGrid(){
+  invTooltip.style.display='none';
   let html = `<div class="invTitleBar" id="invTitleBar">
       <span style="display:flex; align-items:center; gap:6px;">
         <svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -2722,7 +2941,7 @@ function renderInventoryGrid(){
       <button type="button" class="invCloseBtn" onclick="window.__ff1_closeInv()">✕</button>
     </div>
     <div class="invBody">
-    <div class="sSub">Drag to rearrange. Click consumables to use, equipment to equip/unequip.</div>
+    <div class="sSub">${(typeof isStorageOpen==='function' && isStorageOpen()) ? '<b style="color:var(--gold)">STORAGE OPEN</b> — click items to deposit them into the chest.' : 'Drag to rearrange. Click consumables to use, equipment to equip/unequip.'}</div>
     <div class="invGrid" id="invGridEl">`;
   for(let i=0;i<INV_SLOTS;i++){
     const occ = occupantAt(i);
@@ -2825,6 +3044,18 @@ function ensureStorage(){
     player.storageTabs = [];
     for(let i=0;i<STORAGE_TAB_COUNT;i++) player.storageTabs.push({name:'Tab '+(i+1), items:[]});
   }
+  if(typeof player.storageTabsUnlocked !== 'number' || player.storageTabsUnlocked < 1){
+    player.storageTabsUnlocked = 1;
+  }
+  // migration: never lock tabs that already contain items
+  let highestUsed = 0;
+  player.storageTabs.forEach((t,i)=>{ if(t.items && t.items.length>0) highestUsed = i; });
+  player.storageTabsUnlocked = Math.min(STORAGE_TAB_COUNT, Math.max(player.storageTabsUnlocked, highestUsed+1));
+}
+function tabUnlockCost(idx){
+  // idx is the 0-based tab index; the 2nd tab (idx 1) costs 50 G, growing ~25% per tab
+  const raw = 50 * Math.pow(1.25, idx-1);
+  return Math.round(raw/5)*5;
 }
 function storageTab(){ ensureStorage(); return player.storageTabs[activeStorageTab]; }
 function storageEntryAt(slot){ return storageTab().items.find(it=>it.slot===slot) || null; }
@@ -2836,6 +3067,8 @@ function isStorageOpen(){ return storageScreen.style.display==='flex'; }
 function openStorage(){
   if(state!=='overworld') return;
   ensureStorage();
+  pendingUnlockTab = null;
+  if(activeStorageTab >= player.storageTabsUnlocked) activeStorageTab = 0;
   renderStorageWindow();
   storageScreen.style.display='flex';
   bringToFront(storageScreen);
@@ -2849,13 +3082,44 @@ function closeStorage(){
   if(isInvOpen()) renderInventoryGrid();
 }
 window.__ff1_closeStorage = ()=> closeStorage();
-window.__ff1_storageTab = (i)=>{ activeStorageTab = i; renderStorageWindow(); };
+let pendingUnlockTab = null;
+window.__ff1_storageTab = (i)=>{
+  ensureStorage();
+  if(i < player.storageTabsUnlocked){
+    activeStorageTab = i;
+    pendingUnlockTab = null;
+    renderStorageWindow();
+  } else if(i === player.storageTabsUnlocked){
+    pendingUnlockTab = i;
+    renderStorageWindow(true);
+  } else {
+    pendingUnlockTab = null;
+    renderStorageWindow(true);
+    storageFlash('Unlock the earlier tabs first.');
+  }
+};
+window.__ff1_unlockTab = ()=>{
+  ensureStorage();
+  const i = pendingUnlockTab;
+  if(i===null || i!==player.storageTabsUnlocked) return;
+  const cost = tabUnlockCost(i);
+  if(player.gold < cost){ storageFlash(`Not enough gold — you need ${cost} G.`); return; }
+  player.gold -= cost;
+  player.storageTabsUnlocked++;
+  activeStorageTab = i;
+  pendingUnlockTab = null;
+  updateStatBar();
+  renderStorageWindow();
+  storageFlash(`Unlocked ${player.storageTabs[i].name} for ${cost} G!`);
+};
 window.__ff1_renameTab = (val)=>{
   const name = (val||'').slice(0,14);
   storageTab().name = name || ('Tab '+(activeStorageTab+1));
-  // update only the tab strip label to avoid stealing input focus
+  // update only the tab strip label and title bar to avoid stealing input focus
   const btn = document.getElementById('stab'+activeStorageTab);
-  if(btn) btn.textContent = storageTab().name.charAt(0).toUpperCase() || (activeStorageTab+1);
+  if(btn){ btn.textContent = storageTabLabel(activeStorageTab); btn.title = storageTab().name; }
+  const bar = document.getElementById('storageTitleBar');
+  if(bar){ const span = bar.querySelector('span'); if(span) span.textContent = '📦 STORAGE — '+storageTab().name; }
   if(typeof persistSave==='function') persistSave();
 };
 function storageFlash(msg){
@@ -2867,7 +3131,7 @@ function depositFromInventory(slot){
   if(!occ) return;
   ensureStorage();
   const tab = storageTab();
-  if(occ.kind==='potion' || occ.kind==='ether'){
+  if(CONSUMABLE_KINDS.includes(occ.kind)){
     let entry = tab.items.find(it=>it.kind===occ.kind);
     if(!entry){
       const free = findFreeStorageSlot();
@@ -2876,8 +3140,9 @@ function depositFromInventory(slot){
       tab.items.push(entry);
     }
     entry.qty++;
-    if(occ.kind==='potion') player.potions--; else player.ethers--;
-    storageFlash(`Deposited 1 ${occ.kind==='potion'?'Potion':'Ether'}.`);
+    consAdd(occ.kind, -1);
+    const nm = occ.kind==='potion' ? 'Potion' : occ.kind==='ether' ? 'Ether' : FISH_DEFS[occ.kind].name;
+    storageFlash(`Deposited 1 ${nm}.`);
   } else if(occ.kind==='gear'){
     if(isEquipped(occ.uid)){ invFlashMsg('Unequip that item before storing it.'); return; }
     const free = findFreeStorageSlot();
@@ -2895,11 +3160,13 @@ function withdrawFromStorage(slot){
   const tab = storageTab();
   const entry = storageEntryAt(slot);
   if(!entry) return;
-  if(entry.kind==='potion' || entry.kind==='ether'){
-    if(entry.kind==='potion') player.potions++; else player.ethers++;
+  if(CONSUMABLE_KINDS.includes(entry.kind)){
+    if(!ensureConsSlot(entry.kind)){ storageFlash('Your inventory is full!'); return; }
+    consAdd(entry.kind, 1);
     entry.qty--;
     if(entry.qty<=0) tab.items = tab.items.filter(it=>it!==entry);
-    storageFlash(`Withdrew 1 ${entry.kind==='potion'?'Potion':'Ether'}.`);
+    const nm = entry.kind==='potion' ? 'Potion' : entry.kind==='ether' ? 'Ether' : FISH_DEFS[entry.kind].name;
+    storageFlash(`Withdrew 1 ${nm}.`);
   } else {
     const free = findFreeInvSlot();
     if(free<0){ storageFlash('Your inventory is full!'); return; }
@@ -2914,18 +3181,37 @@ function withdrawFromStorage(slot){
 function storageItemInfo(entry){
   if(entry.kind==='potion') return {name:'Potion', color:RARITY_COLORS.common, desc:'Restores HP when used.', status:'Click to withdraw.'};
   if(entry.kind==='ether') return {name:'Ether', color:RARITY_COLORS.common, desc:'Restores MP when used.', status:'Click to withdraw.'};
+  if(isFishKind(entry.kind)){
+    const f = FISH_DEFS[entry.kind];
+    const rc = RARITY_COLORS[f.rarity];
+    return {name:f.name, color:rc, desc:`<span style="color:${rc}">${rarityLabel(f.rarity)}</span> <span style="color:#9fb3ff">Fish</span><br>Eat to restore ${f.heal} HP${f.mp?` and ${f.mp} MP`:''}.`, status:'Click to withdraw.'};
+  }
   const def = EQUIP_DEFS[entry.id];
   const isQuest = def.slot==='quest';
   const type = isQuest ? 'Quest Item' : def.slot.charAt(0).toUpperCase()+def.slot.slice(1);
   const rc = rarityColorOf(entry.id);
   return {name:def.name, color:rc, desc:`<span style="color:${rc}">${rarityLabel(def.rarity)}</span> <span style="color:#9fb3ff">${type}</span><br>${def.desc}`, status:'Click to withdraw.'};
 }
+function storageTabLabel(i){
+  const name = player.storageTabs[i].name;
+  return /^Tab \d+$/.test(name) ? String(i+1) : name.slice(0,3);
+}
 function renderStorageWindow(keepMsg){
   ensureStorage();
+  invTooltip.style.display='none';
   const prevMsg = keepMsg ? (document.getElementById('storageFooterMsg')||{}).textContent : null;
-  const tabStrip = player.storageTabs.map((t,i)=>
-    `<button id="stab${i}" class="storageTab${i===activeStorageTab?' active':''}" title="${t.name}" onclick="window.__ff1_storageTab(${i})">${t.name.charAt(0).toUpperCase()||i+1}</button>`
-  ).join('');
+  const tabStrip = player.storageTabs.map((t,i)=>{
+    const locked = i >= player.storageTabsUnlocked;
+    const nextUnlock = i === player.storageTabsUnlocked;
+    const cls = 'storageTab' + (i===activeStorageTab && !locked ? ' active' : '') + (locked ? ' locked' : '') + (nextUnlock ? ' nextUnlock' : '');
+    const label = locked ? '🔒' : storageTabLabel(i);
+    const title = locked ? (nextUnlock ? `Unlock for ${tabUnlockCost(i)} G` : 'Locked') : t.name.replace(/"/g,'&quot;');
+    return `<button id="stab${i}" class="${cls}" title="${title}" onclick="window.__ff1_storageTab(${i})">${label}</button>`;
+  }).join('');
+  const footerContent = (pendingUnlockTab!==null && pendingUnlockTab===player.storageTabsUnlocked)
+    ? `Unlock <b style="color:var(--gold)">Tab ${pendingUnlockTab+1}</b> for <b style="color:var(--gold)">${tabUnlockCost(pendingUnlockTab)} G</b>?
+       <button style="font-size:8px; padding:3px 8px; margin-left:6px;" onclick="window.__ff1_unlockTab()">UNLOCK</button>`
+    : (prevMsg || 'Click your inventory items to deposit. Click stored items to withdraw. Drag to rearrange.');
   let grid = '';
   for(let i=0;i<INV_SLOTS;i++){
     const entry = storageEntryAt(i);
@@ -2953,7 +3239,7 @@ function renderStorageWindow(keepMsg){
         <input id="storageTabName" maxlength="14" value="${storageTab().name.replace(/"/g,'&quot;')}" oninput="window.__ff1_renameTab(this.value)">
       </div>
       <div class="invGrid" id="storageGridEl">${grid}</div>
-      <div class="sFooter box" id="storageFooterMsg">${prevMsg || 'Click your inventory items to deposit. Click stored items to withdraw. Drag to rearrange.'}</div>
+      <div class="sFooter box" id="storageFooterMsg">${footerContent}</div>
     </div>`;
   makeWindowDraggable(storageScreen, 'storageTitleBar');
   attachStorageHandlers();
@@ -3056,6 +3342,7 @@ function unlockNode(treeKey, idx){
   renderSkillScreen();
 }
 function renderSkillScreen(){
+  invTooltip.style.display='none';
   let html = `<div class="invTitleBar" id="skillTitleBar">
       <span>⚔ PASSIVES</span>
       <button type="button" class="invCloseBtn" onclick="window.__ff1_closeSkills()">✕</button>
@@ -3192,6 +3479,7 @@ function renderShop(note){
   renderShopWindow(note);
 }
 function renderShopWindow(note){
+  invTooltip.style.display='none';
   const coin = `<svg width="8" height="8" viewBox="0 0 24 24" style="vertical-align:-1px;">
     <circle cx="12" cy="12" r="10" fill="#ffd54a" stroke="#b8860b" stroke-width="2"/>
     <circle cx="12" cy="12" r="5.5" fill="none" stroke="#b8860b" stroke-width="1.5"/>
@@ -3243,6 +3531,12 @@ function renderShopWindow(note){
     let btns = '';
     if(player.potions>0) btns += sellBtn('potion', consumableIconSVG('potion'), SELL_VALUES.common, `x${player.potions}`, RARITY_COLORS.common);
     if(player.ethers>0) btns += sellBtn('ether', consumableIconSVG('ether'), SELL_VALUES.common, `x${player.ethers}`, RARITY_COLORS.common);
+    Object.keys(FISH_DEFS).forEach(kind=>{
+      if(consQty(kind)>0){
+        const f = FISH_DEFS[kind];
+        btns += sellBtn(kind, consumableIconSVG(kind), f.sell, `x${consQty(kind)}`, RARITY_COLORS[f.rarity]);
+      }
+    });
     player.gear.forEach(g=>{
       const d = EQUIP_DEFS[g.id];
       const equipped = isEquipped(g.uid);
@@ -3289,6 +3583,16 @@ window.__ff1_sellItem = (key)=>{
     if(player.ethers>0){ player.ethers--; player.gold += SELL_VALUES.common; updateStatBar(); renderSellShop(`Sold an Ether for ${SELL_VALUES.common} G!`); }
     return;
   }
+  if(isFishKind(key)){
+    if(consQty(key)>0){
+      const f = FISH_DEFS[key];
+      consAdd(key, -1);
+      player.gold += f.sell;
+      updateStatBar();
+      renderSellShop(`Sold a ${f.name} for ${f.sell} G!`);
+    }
+    return;
+  }
   const uid = parseInt(key.slice(1));
   const piece = gearByUid(uid);
   if(!piece) return;
@@ -3306,6 +3610,10 @@ window.__ff1_sellHover = (e, key)=>{
   if(key==='potion' || key==='ether'){
     const name = key==='potion' ? 'Potion' : 'Ether';
     html = `<b style="color:${RARITY_COLORS.common};">${name}</b><br><span style="color:${RARITY_COLORS.common}">Common</span> <span style="color:#9fb3ff">Consumable</span><br><span style="opacity:0.75;">Sell: ${SELL_VALUES.common} G</span>`;
+  } else if(isFishKind(key)){
+    const f = FISH_DEFS[key];
+    const rc = RARITY_COLORS[f.rarity];
+    html = `<b style="color:${rc};">${f.name}</b><br><span style="color:${rc}">${rarityLabel(f.rarity)}</span> <span style="color:#9fb3ff">Fish</span><br><span style="opacity:0.75;">Sell: ${f.sell} G</span>`;
   } else {
     const uid = parseInt(key.slice(1));
     const piece = gearByUid(uid);
@@ -3347,6 +3655,7 @@ function beginBattle(template, isBoss){
   closeCharSheet();
   closeSkillScreen();
   closeShop();
+  closeStorage();
   statBar.style.display='none';
   playerStatus.style.display='block';
   updatePlayerStatusPanel();
@@ -3694,11 +4003,14 @@ function drawBattle(){
 function frame(){
   animTimer++;
   const standTile = tileAt(player.x, player.y);
-  const canInteract = state==='overworld' && ((standTile===6 || standTile===7 || standTile===8) || adjacentToVine() || nearInnkeeper() || nearShopkeeper() || !!nearPatron());
+  const canInteract = (state==='overworld' && ((standTile===6 || standTile===7 || standTile===8) || adjacentToVine() || !!adjacentToWater() || nearInnkeeper() || nearShopkeeper() || !!nearPatron() || nearChest()))
+    || (state==='fishing' && fishing && fishing.phase==='bite');
   btnInteractEl.classList.toggle('canInteract', canInteract);
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(state==='overworld' || state==='shop' || (state==='dialog' && battle===null)){
+  if(state==='fishing') updateFishing();
+  if(state==='overworld' || state==='shop' || state==='fishing' || (state==='dialog' && battle===null)){
     drawOverworld();
+    drawFishingOverlay();
   }
   if(state==='title'){
     ctx.fillStyle='#000';
