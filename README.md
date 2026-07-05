@@ -3,9 +3,11 @@ An RPG Adventure
 
 TO DO LIST:
 
--make storage inside inn room interactable
-
 -add diablo style waypoint system
+
+# v0.03
+-added storage with additional purchasable tabs and renamable tabs
+-added fishing system
 
 # v0.02 (7/4/2026)
 -added enterable inn and shop
