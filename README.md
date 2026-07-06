@@ -5,6 +5,15 @@ TO DO LIST:
 
 -add diablo style waypoint system
 
+# v0.05 (7/5/2026)
+-Added 1 ticking damage when standing near cacti
+
+-Added foliage to the water in The Outskirts
+
+-Added a new Zone to the left of The Outskirts called The Commons
+
+-Added new zone called The Citadel with a Castle
+
 # v0.04 (7/5/2026)
 -added fisherman npc who sells a fishing rod and buys fish
 
