@@ -879,8 +879,73 @@ function buildMap(){
   g[5][16]=11; g[6][16]=11;
   // magical vine sealing the eastern pass (right of the castle)
   g[7][18]=12;
+  // open western path to the meadow
+  g[7][0]=13;
   // wooden pier extending into the right lake
   g[9][15]=27; g[10][15]=27;
+  return g;
+}
+function buildMeadowMap(){
+  const g = [];
+  for(let y=0;y<ROWS;y++){
+    const row=[];
+    for(let x=0;x<COLS;x++){
+      if(x===0||y===0||x===COLS-1||y===ROWS-1) row.push(2); // tree border
+      else row.push(0); // open grass
+    }
+    g.push(row);
+  }
+  // main cobblestone avenue (row 7) running east-west
+  for(let x=1;x<=19;x++) g[7][x]=11;
+  // exit back east to the marketplace (set after cobblestone so it isn't overwritten)
+  g[7][19]=13;
+  // cobblestone branches up and down to the houses
+  [3,13,17].forEach(bx=>{ g[6][bx]=11; g[8][bx]=11; });
+  g[8][8]=11; // south stem toward the S house only (north stub removed after path shift)
+  for(let y=4;y<=6;y++){ g[y][3]=11; g[y][13]=11; }   // north cul-de-sac stems
+  // northern path between the top two houses, up to the Citadel gate
+  for(let y=1;y<=6;y++) g[y][9]=11;
+  g[0][9]=13; // exit north to The Citadel
+  for(let y=8;y<=10;y++){ g[y][8]=11; g[y][17]=11; }  // south stems
+  // helper: stamp a 3-wide, 2-tall cottage (roof row + wall row with a centered door)
+  function house(cx, roofY, doorTile){
+    g[roofY][cx-1]=9;  g[roofY][cx]=9;  g[roofY][cx+1]=9;   // roof
+    g[roofY+1][cx-1]=10; g[roofY+1][cx]=doorTile; g[roofY+1][cx+1]=10; // wall + door
+  }
+  // 28 = house door (enterable later); for now decorative doorway
+  house(3, 2, 28);   // NW cottage, door faces the north stem
+  house(13, 2, 28);  // NE-ish cottage
+  house(8, 10, 28);  // S cottage
+  house(17, 10, 28); // SE cottage
+  // village well tucked between the two southern houses (bottom-right)
+  g[12][13]=29;
+  return g;
+}
+function buildCitadelMap(){
+  const g = [];
+  for(let y=0;y<ROWS;y++){
+    const row=[];
+    for(let x=0;x<COLS;x++){
+      if(x===0||y===0||x===COLS-1||y===ROWS-1) row.push(30); // white stone pillar border
+      else row.push(31); // light gray stone floor
+    }
+    g.push(row);
+  }
+  // exit south back to the Commons
+  g[ROWS-1][9]=13;
+  g[ROWS-2][9]=31; // ensure the tile above the exit is floor
+  // castle footprint (rows 1-4, columns 4..15) — blocked; drawn as one overlay
+  for(let y=1;y<=4;y++){
+    for(let x=4;x<=15;x++){
+      g[y][x]=32;
+    }
+  }
+  // castle gate doorway at the south face (walkable-looking but blocked; decorative)
+  g[4][9]=33; g[4][10]=33;
+  // red carpet, 3 tiles wide, rolling south from the castle door toward the entrance
+  for(let y=5;y<=ROWS-2;y++){ g[y][8]=34; g[y][9]=34; g[y][10]=34; }
+  // re-assert the exit tile so the carpet doesn't cover it
+  g[ROWS-1][9]=13;
   return g;
 }
 function buildDesertMap(){
@@ -968,11 +1033,32 @@ function buildStoreMap(){
 }
 const storeMap = buildStoreMap();
 const roomMap = buildRoomMap();
+const meadowMap = buildMeadowMap();
+const citadelMap = buildCitadelMap();
 let map = overworldMap;
 const INNKEEPER = {x:10, y:4};
 const SHOPKEEPER = {x:10, y:4};
 const CHEST = {x:11, y:5};
 const FISHERMAN = {x:13, y:9};
+const COMMONS_NPCS = [
+  {x:5,  y:6,  tunic:'#8f2b2b', hair:'#3a2a15', name:'Villager',
+   lines:[`"Morning! The Commons is the safest patch of the kingdom — no beasts dare come here."`,
+          `"My grandfather laid these cobblestones. Good work lasts, I say."`]},
+  {x:11, y:5,  tunic:'#2b5f8f', hair:'#d9b45c', name:'Seamstress',
+   lines:[`"I stitch cloaks for the guards up at the castle. Dangerous work they do."`,
+          `"That green dragon had the whole village frightened. You look brave enough, though."`]},
+  {x:10, y:8,  tunic:'#2b7a3a', hair:'#e8e8e8', name:'Old Farmer',
+   lines:[`"Draw from the well if you're thirsty, traveler. Cleanest water for miles."`,
+          `"Rain's been kind this season. The crops'll be fat come harvest."`]},
+  {x:16, y:9,  tunic:'#6a3a8f', hair:'#1a1a1a', name:'Child',
+   lines:[`"When I grow up I'm gonna be a hero like you! Pow! Pow!"`,
+          `"Did you really fight monsters? Were you scared? I wouldn't be. Maybe a little."`]}
+];
+const COMMONS_COWS = [
+  {x:2, y:11, facing:1},
+  {x:4, y:12, facing:-1},
+  {x:3, y:10, facing:1}
+];
 const INN_PATRONS = [
   {x:6,  y:8,  tunic:'#8f2b2b', hair:'#1a1a1a'},
   {x:12, y:9,  tunic:'#2b7a3a', hair:'#d9b45c'},
@@ -987,11 +1073,13 @@ const PATRON_LINES = [
   `"Rested legs walk farther. Ten gold's a bargain, friend."`
 ];
 const ZONE_NAMES = {
-  overworld:'The Marketplace',
+  overworld:'The Outskirts',
   desert:'The Desert',
   inn:'The Inn',
   store:'The Shop',
-  room:'The Inn'
+  room:'The Inn',
+  meadow:'The Commons',
+  citadel:'The Citadel'
 };
 function updateZoneBox(){
   const el = document.getElementById('zoneBox');
@@ -999,7 +1087,7 @@ function updateZoneBox(){
 }
 function setActiveZone(zone){
   player.zone = zone;
-  map = (zone==='desert') ? desertMap : (zone==='inn') ? innMap : (zone==='store') ? storeMap : (zone==='room') ? roomMap : overworldMap;
+  map = (zone==='desert') ? desertMap : (zone==='inn') ? innMap : (zone==='store') ? storeMap : (zone==='room') ? roomMap : (zone==='meadow') ? meadowMap : (zone==='citadel') ? citadelMap : overworldMap;
   updateZoneBox();
 }
 function applyVineState(){
@@ -1016,7 +1104,7 @@ function tileAt(x,y){
   if(y<0||y>=ROWS||x<0||x>=COLS) return 2;
   return map[y][x];
 }
-function isBlocked(t){ return t===2||t===3||t===5||t===9||t===10||t===12||t===14||t===17||t===18||t===20||t===21||t===22||t===23||t===24||t===26; }
+function isBlocked(t){ return t===2||t===3||t===5||t===9||t===10||t===12||t===14||t===17||t===18||t===20||t===21||t===22||t===23||t===24||t===26||t===28||t===29||t===30||t===32||t===33; }
 
 // ---------- PLAYER ----------
 const player = {
@@ -1037,6 +1125,7 @@ const player = {
   equipped:{ weapon:null, armor:null, accessory:null },
   zone:'overworld',
   vineDestroyed:false,
+  desertSeen:false,
   fishCounts:{}
 };
 
@@ -1253,7 +1342,7 @@ function hideMenu(){ menuPanel.style.display='none'; menuPanel.innerHTML=''; }
 
 // ---------- OVERWORLD RENDER ----------
 const TILE_COLORS = {
-  0:'#1c6b2e', 1:'#c2a366', 2:'#0d3a17', 3:'#2454a8', 4:'#8a6a45', 5:'#5b5b6b', 6:'#d9b779', 7:'#d9b779', 8:'#4a4a52', 11:'#7d7d88', 12:'#c2a366', 13:'#c2a366', 14:'#d8b96a', 15:'#d8b96a', 16:'#9a6a38', 17:'#4a3018', 18:'#7a4a20', 19:'#9a6a38', 20:'#9a6a38', 21:'#050508', 22:'#4a3018', 23:'#4a3018', 24:'#9a6a38', 25:'#4a3018', 26:'#9a6a38', 27:'#2454a8'
+  0:'#1c6b2e', 1:'#c2a366', 2:'#0d3a17', 3:'#2454a8', 4:'#8a6a45', 5:'#5b5b6b', 6:'#d9b779', 7:'#d9b779', 8:'#4a4a52', 11:'#7d7d88', 12:'#c2a366', 13:'#c2a366', 14:'#d8b96a', 15:'#d8b96a', 16:'#9a6a38', 17:'#4a3018', 18:'#7a4a20', 19:'#9a6a38', 20:'#9a6a38', 21:'#050508', 22:'#4a3018', 23:'#4a3018', 24:'#9a6a38', 25:'#4a3018', 26:'#9a6a38', 27:'#2454a8', 28:'#5e3a1a', 29:'#6e6e78', 30:'#e8e8ee', 31:'#c4c4cc', 32:'#c4c4cc', 33:'#c4c4cc', 34:'#8f2b2b'
 };
 function drawTile(x,y,t){
   const px=x*TS, py=y*TS;
@@ -1398,8 +1487,119 @@ function drawTile(x,y,t){
     }
     ctx.strokeStyle='#7a5a24';
     ctx.strokeRect(px+1,py+1,TS-2,TS-2);
+  } else if(t===28){ // cottage wall with a wooden door
+    ctx.fillStyle='#d9b779';
+    ctx.fillRect(px,py,TS,TS);
+    ctx.strokeStyle='#7a5a24';
+    ctx.strokeRect(px+1,py+1,TS-2,TS-2);
+    // door
+    ctx.fillStyle='#6b4420';
+    ctx.fillRect(px+9, py+7, 14, TS-7);
+    ctx.strokeStyle='#4a2e13';
+    ctx.strokeRect(px+9, py+7, 14, TS-7);
+    ctx.beginPath();
+    ctx.moveTo(px+16, py+7); ctx.lineTo(px+16, py+TS);
+    ctx.stroke();
+    // arched top
+    ctx.fillStyle='#6b4420';
+    ctx.beginPath();
+    ctx.arc(px+16, py+7, 7, Math.PI, 0);
+    ctx.fill();
+    // handle + lintel
+    ctx.fillStyle='#d8b45a';
+    ctx.beginPath(); ctx.arc(px+12, py+18, 1.6, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#8a5a2c';
+    ctx.fillRect(px+7, py+6, 18, 2);
+  } else if(t===29){ // village well
+    ctx.fillStyle='#1c6b2e'; // grass base
+    ctx.fillRect(px,py,TS,TS);
+    // stone ring
+    ctx.fillStyle='#7d7d88';
+    ctx.beginPath(); ctx.ellipse(px+16, py+20, 11, 8, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#5b5b66'; // dark water inside
+    ctx.beginPath(); ctx.ellipse(px+16, py+20, 7, 5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#2f4f8f';
+    ctx.beginPath(); ctx.ellipse(px+16, py+20, 5, 3.4, 0, 0, Math.PI*2); ctx.fill();
+    // stone highlights
+    ctx.fillStyle='#9a9aa6';
+    ctx.fillRect(px+6, py+18, 3, 2);
+    ctx.fillRect(px+23, py+19, 3, 2);
+    // posts + roof
+    ctx.fillStyle='#6b4420';
+    ctx.fillRect(px+7, py+4, 2, 12);
+    ctx.fillRect(px+23, py+4, 2, 12);
+    ctx.fillStyle='#8a3a2a';
+    ctx.beginPath();
+    ctx.moveTo(px+4, py+6);
+    ctx.lineTo(px+16, py-1);
+    ctx.lineTo(px+28, py+6);
+    ctx.closePath();
+    ctx.fill();
+    // crank bar
+    ctx.strokeStyle='#3f2a15';
+    ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(px+8, py+9); ctx.lineTo(px+24, py+9); ctx.stroke();
+    ctx.lineWidth=1;
+  } else if(t===32 || t===33){ // castle footprint — floor base (castle drawn as overlay)
+    ctx.fillStyle='#c4c4cc';
+    ctx.fillRect(px,py,TS,TS);
+  } else if(t===30){ // white stone pillar (citadel border)
+    // floor behind the pillar
+    ctx.fillStyle='#c4c4cc';
+    ctx.fillRect(px,py,TS,TS);
+    // pillar shaft
+    ctx.fillStyle='#e8e8ee';
+    ctx.fillRect(px+7, py+3, 18, TS-4);
+    // fluting lines
+    ctx.strokeStyle='#cfcfd8';
+    ctx.lineWidth=1;
+    for(let i=1;i<4;i++){
+      ctx.beginPath();
+      ctx.moveTo(px+7+i*4.5, py+5);
+      ctx.lineTo(px+7+i*4.5, py+TS-3);
+      ctx.stroke();
+    }
+    // capital + base caps
+    ctx.fillStyle='#f4f4f8';
+    ctx.fillRect(px+5, py+3, 22, 4);
+    ctx.fillRect(px+5, py+TS-5, 22, 4);
+    // shading edges
+    ctx.fillStyle='rgba(0,0,0,0.10)';
+    ctx.fillRect(px+22, py+3, 3, TS-4);
+    ctx.fillStyle='rgba(255,255,255,0.5)';
+    ctx.fillRect(px+7, py+3, 2, TS-4);
+  } else if(t===31){ // light gray stone floor
+    ctx.fillStyle='#c4c4cc';
+    ctx.fillRect(px,py,TS,TS);
+    // subtle slab grid
+    ctx.strokeStyle='#b2b2ba';
+    ctx.lineWidth=1;
+    ctx.strokeRect(px+0.5, py+0.5, TS-1, TS-1);
+    // faint diagonal sheen speckle for texture
+    ctx.fillStyle='#cfcfd6';
+    const s=(x*5+y*3)%4;
+    ctx.fillRect(px+4+s*3, py+6, 3, 3);
+    ctx.fillRect(px+20-s*2, py+22, 3, 3);
+  } else if(t===34){ // red carpet runner (3 tiles wide, cols 8-10)
+    // stone floor base underneath
+    ctx.fillStyle='#c4c4cc';
+    ctx.fillRect(px,py,TS,TS);
+    // carpet body
+    ctx.fillStyle='#8f2b2b';
+    ctx.fillRect(px, py, TS, TS);
+    // weave shading
+    ctx.fillStyle='#7c2323';
+    for(let i=0;i<4;i++) ctx.fillRect(px, py+i*8+ (animTimer*0? 0:0) +3, TS, 1);
+    // gold trim only on the outer edges of the runner (x===8 left edge, x===10 right edge)
+    ctx.fillStyle='#d8b45a';
+    if(x===8) ctx.fillRect(px+2, py, 2, TS);   // left border
+    if(x===10) ctx.fillRect(px+TS-4, py, 2, TS); // right border
   } else if(t===11){ // cobblestone
     const seed = (x*7 + y*3) % 5;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(px, py, TS, TS);
+    ctx.clip();
     // mortar base
     ctx.fillStyle='#55555f';
     ctx.fillRect(px,py,TS,TS);
@@ -1422,6 +1622,7 @@ function drawTile(x,y,t){
         ctx.fillRect(sx+2, sy+1, stoneW-4, 2);
       }
     }
+    ctx.restore();
   } else if(t===12){ // magical vine over the path
     // path base
     ctx.fillStyle='#b08f56';
@@ -1450,23 +1651,79 @@ function drawTile(x,y,t){
     const glowR = 3 + Math.sin(animTimer*0.08)*1.2;
     ctx.fillStyle='#a7ffb8';
     ctx.beginPath(); ctx.arc(px+16, py+16, glowR, 0, Math.PI*2); ctx.fill();
-  } else if(t===13){ // zone exit — shimmering passage
-    ctx.fillStyle='#b08f56';
-    for(let i=0;i<3;i++) ctx.fillRect(px+4+i*9, py+4+((i%2)*10), 4,4);
-    const shine = 0.15 + 0.15*Math.sin(animTimer*0.05);
-    ctx.fillStyle=`rgba(255,213,74,${shine.toFixed(2)})`;
-    ctx.fillRect(px,py,TS,TS);
-    // direction chevrons
-    ctx.strokeStyle='rgba(255,235,150,0.85)';
-    ctx.lineWidth=2;
-    const dir = (x<COLS/2) ? -1 : 1; // point outward
-    for(let i=0;i<2;i++){
-      const cxx = px+16 + dir*(i*7 - 3) + dir*((animTimer*0.4)%7);
+  } else if(t===13){ // zone exit — path with flashing directional chevrons
+    if(player.zone==='meadow'){
+      // exact cobblestone match for the Commons avenue
+      const seed = (x*7 + y*3) % 5;
+      ctx.save();
       ctx.beginPath();
-      ctx.moveTo(cxx - dir*4, py+10);
-      ctx.lineTo(cxx + dir*2, py+16);
-      ctx.lineTo(cxx - dir*4, py+22);
-      ctx.stroke();
+      ctx.rect(px, py, TS, TS);
+      ctx.clip();
+      ctx.fillStyle='#55555f';
+      ctx.fillRect(px,py,TS,TS);
+      const stoneW=10, stoneH=8;
+      for(let row=0; row<4; row++){
+        const offset = (row%2===0) ? 0 : stoneW/2;
+        for(let col=-1; col<4; col++){
+          const sx = px + col*stoneW + offset + ((seed+row)%2);
+          const sy = py + row*stoneH + 1;
+          const shade = ((row*3+col+seed)%3);
+          ctx.fillStyle = shade===0 ? '#8a8a96' : (shade===1 ? '#7d7d88' : '#70707c');
+          ctx.beginPath();
+          ctx.roundRect ? ctx.roundRect(sx+1, sy, stoneW-2, stoneH-2, 3)
+                        : ctx.rect(sx+1, sy, stoneW-2, stoneH-2);
+          ctx.fill();
+          ctx.fillStyle='rgba(255,255,255,0.10)';
+          ctx.fillRect(sx+2, sy+1, stoneW-4, 2);
+        }
+      }
+      ctx.restore();
+    } else if(player.zone==='desert'){
+      ctx.fillStyle='#d8b96a';
+      ctx.fillRect(px,py,TS,TS);
+    } else if(player.zone==='citadel'){
+      // light gray stone floor to match the Citadel
+      ctx.fillStyle='#c4c4cc';
+      ctx.fillRect(px,py,TS,TS);
+      ctx.strokeStyle='#b2b2ba';
+      ctx.lineWidth=1;
+      ctx.strokeRect(px+0.5, py+0.5, TS-1, TS-1);
+      ctx.fillStyle='#cfcfd6';
+      const cs=(x*5+y*3)%4;
+      ctx.fillRect(px+4+cs*3, py+6, 3, 3);
+      ctx.fillRect(px+20-cs*2, py+22, 3, 3);
+    } else {
+      ctx.fillStyle='#b08f56';
+      for(let i=0;i<3;i++) ctx.fillRect(px+4+i*9, py+4+((i%2)*10), 4,4);
+    }
+    // flashing directional chevrons only (no tinted box)
+    const flashA = 0.55 + 0.45*Math.sin(animTimer*0.12);
+    ctx.strokeStyle=`rgba(255,235,150,${flashA.toFixed(2)})`;
+    ctx.lineWidth=2;
+    // determine which edge this exit points toward
+    let axis, dir;
+    if(y<=0){ axis='v'; dir=-1; }            // top edge → up
+    else if(y>=ROWS-1){ axis='v'; dir=1; }   // bottom edge → down
+    else if(x<=0){ axis='h'; dir=-1; }       // left edge → left
+    else if(x>=COLS-1){ axis='h'; dir=1; }   // right edge → right
+    else { axis='h'; dir=(x<COLS/2)?-1:1; }  // interior fallback → outward
+    const anim = (animTimer*0.4)%7;
+    for(let i=0;i<2;i++){
+      if(axis==='h'){
+        const cxx = px+16 + dir*(i*7 - 3) + dir*anim;
+        ctx.beginPath();
+        ctx.moveTo(cxx - dir*4, py+10);
+        ctx.lineTo(cxx + dir*2, py+16);
+        ctx.lineTo(cxx - dir*4, py+22);
+        ctx.stroke();
+      } else {
+        const cyy = py+16 + dir*(i*7 - 3) + dir*anim;
+        ctx.beginPath();
+        ctx.moveTo(px+10, cyy - dir*4);
+        ctx.lineTo(px+16, cyy + dir*2);
+        ctx.lineTo(px+22, cyy - dir*4);
+        ctx.stroke();
+      }
     }
     ctx.lineWidth=1;
   } else if(t===14){ // desert obstacle — cactus or boulder
@@ -2032,7 +2289,82 @@ function drawLakes(){
       ctx.arc(L.cx-10+li*6, L.cy-9, 1.8, 0, Math.PI*2);
       ctx.fill();
     }
+    // lily pads drifting on the water (clipped to the blob)
+    const PAD_SETS = [
+      [{ox:-14,oy:-6,notch:0.6},{ox:10,oy:-12,notch:2.4},{ox:4,oy:12,notch:4.2,flower:true},{ox:-9,oy:14,notch:1.4}],
+      [{ox:-24,oy:4,notch:5.0,flower:true},{ox:22,oy:-2,notch:1.1},{ox:12,oy:16,notch:3.3},{ox:-14,oy:18,notch:2.0}]
+    ];
+    (PAD_SETS[li]||[]).forEach((p,pi)=>{
+      const drift = Math.sin(animTimer*0.02 + pi*2.1 + li)*2;
+      const bobY = Math.sin(animTimer*0.03 + pi*1.3)*1;
+      const pcx = L.cx + p.ox + drift;
+      const pcy = L.cy + p.oy + bobY;
+      // pad
+      ctx.fillStyle='#2e7a34';
+      ctx.beginPath();
+      ctx.ellipse(pcx, pcy, 7, 5, 0, 0, Math.PI*2);
+      ctx.fill();
+      // notch cut (water shows through)
+      ctx.fillStyle='#2f6fc0';
+      ctx.beginPath();
+      ctx.moveTo(pcx, pcy);
+      ctx.lineTo(pcx + Math.cos(p.notch)*9, pcy + Math.sin(p.notch)*7);
+      ctx.lineTo(pcx + Math.cos(p.notch+0.55)*9, pcy + Math.sin(p.notch+0.55)*7);
+      ctx.closePath();
+      ctx.fill();
+      // top-left sheen
+      ctx.fillStyle='rgba(255,255,255,0.16)';
+      ctx.beginPath();
+      ctx.ellipse(pcx-2, pcy-1.6, 3.4, 2, -0.5, 0, Math.PI*2);
+      ctx.fill();
+      // one pad per lake blooms
+      if(p.flower){
+        ctx.fillStyle='#f2b6cd';
+        for(let k=0;k<5;k++){
+          const a = k*(Math.PI*2/5) + animTimer*0.004;
+          ctx.beginPath();
+          ctx.ellipse(pcx+Math.cos(a)*2.4, pcy-1+Math.sin(a)*2.4, 1.7, 1.1, a, 0, Math.PI*2);
+          ctx.fill();
+        }
+        ctx.fillStyle='#ffd54a';
+        ctx.beginPath(); ctx.arc(pcx, pcy-1, 1.2, 0, Math.PI*2); ctx.fill();
+      }
+    });
     ctx.restore();
+    // cattail reeds at the shoreline (drawn over the sand ring)
+    const REED_SETS = [
+      [{ox:-0.85, oy:-0.35}, {ox:0.7, oy:0.55}],
+      [{ox:0.85, oy:-0.3}, {ox:-0.75, oy:0.6}]
+    ];
+    (REED_SETS[li]||[]).forEach((c,ci)=>{
+      const bx = L.cx + c.ox*L.r;
+      const by = L.cy + c.oy*L.r;
+      for(let i=0;i<4;i++){
+        const sx = bx + i*3 - 4;
+        const h = 13 + ((i*7 + ci*5) % 6);
+        const sway = Math.sin(animTimer*0.03 + i*0.9 + ci*2)*1.6;
+        ctx.strokeStyle = i%2 ? '#3f7a2e' : '#4f8f3a';
+        ctx.lineWidth=1.6;
+        ctx.beginPath();
+        ctx.moveTo(sx, by);
+        ctx.quadraticCurveTo(sx+sway*0.5, by-h*0.6, sx+sway, by-h);
+        ctx.stroke();
+        // brown cattail heads on two stalks per cluster
+        if(i===1 || i===3){
+          ctx.fillStyle='#6b4420';
+          ctx.beginPath();
+          ctx.ellipse(sx+sway, by-h-3, 1.7, 3.4, 0, 0, Math.PI*2);
+          ctx.fill();
+          ctx.strokeStyle='#3f7a2e';
+          ctx.lineWidth=1;
+          ctx.beginPath();
+          ctx.moveTo(sx+sway, by-h-6.4);
+          ctx.lineTo(sx+sway, by-h-8.5);
+          ctx.stroke();
+        }
+      }
+      ctx.lineWidth=1;
+    });
   });
 }
 
@@ -2258,6 +2590,227 @@ function drawPathConnector(){
   }
 }
 
+function drawCitadelCastle(){
+  // footprint: columns 4..15 (x px 128..512), rows 1..4 (y px 32..160)
+  const L = 4*TS, R = 16*TS;      // 128 .. 512
+  const W = R - L;                // 384
+  const groundY = 5*TS;           // castle base sits at row 5 top (y=160)
+  const stone = '#dfe0e6', stoneDk = '#b9bac4', stoneMid = '#c9cad2';
+  const roof = '#3a5da8', roofDk = '#2a4480', trim = '#f2f2f6';
+  // ---- STORY 1 (base, widest) ----
+  const s1Top = groundY - 58, s1H = 58;
+  ctx.fillStyle = stone;
+  ctx.fillRect(L, s1Top, W, s1H);
+  ctx.fillStyle = stoneDk; // right-edge shade
+  ctx.fillRect(R-10, s1Top, 10, s1H);
+  ctx.fillStyle = 'rgba(255,255,255,0.5)'; // left highlight
+  ctx.fillRect(L, s1Top, 6, s1H);
+  // stone block courses
+  ctx.strokeStyle = stoneDk; ctx.lineWidth=1;
+  for(let yy=s1Top+12; yy<groundY; yy+=12){
+    ctx.beginPath(); ctx.moveTo(L, yy); ctx.lineTo(R, yy); ctx.stroke();
+  }
+  for(let xx=L+24; xx<R; xx+=24){
+    ctx.beginPath(); ctx.moveTo(xx, s1Top); ctx.lineTo(xx, groundY); ctx.stroke();
+  }
+  // ---- corner towers (full height, flanking) ----
+  function tower(cx){
+    const tw=42, tTop=groundY-104, tH=104;
+    ctx.fillStyle=stone; ctx.fillRect(cx-tw/2, tTop, tw, tH);
+    ctx.fillStyle=stoneDk; ctx.fillRect(cx+tw/2-8, tTop, 8, tH);
+    ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.fillRect(cx-tw/2, tTop, 5, tH);
+    // crenellations
+    ctx.fillStyle=stone;
+    for(let i=0;i<4;i++) ctx.fillRect(cx-tw/2 + i*11, tTop-8, 7, 8);
+    // conical purple roof
+    ctx.fillStyle=roof;
+    ctx.beginPath();
+    ctx.moveTo(cx-tw/2-4, tTop-8);
+    ctx.lineTo(cx, tTop-34);
+    ctx.lineTo(cx+tw/2+4, tTop-8);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle=roofDk;
+    ctx.beginPath();
+    ctx.moveTo(cx, tTop-34); ctx.lineTo(cx+tw/2+4, tTop-8); ctx.lineTo(cx, tTop-8); ctx.closePath(); ctx.fill();
+    // finial + flag
+    ctx.strokeStyle='#8a6a2a'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(cx, tTop-34); ctx.lineTo(cx, tTop-44); ctx.stroke();
+    ctx.fillStyle='#c23b3b';
+    const fl = 4*Math.sin(animTimer*0.1);
+    ctx.beginPath(); ctx.moveTo(cx, tTop-44); ctx.lineTo(cx+10, tTop-41+fl*0.3); ctx.lineTo(cx, tTop-38); ctx.closePath(); ctx.fill();
+    // tower window
+    ctx.fillStyle='#2b2b3a';
+    ctx.fillRect(cx-5, tTop+20, 10, 16);
+    ctx.beginPath(); ctx.arc(cx, tTop+20, 5, Math.PI, 0); ctx.fill();
+    ctx.fillStyle='#7a9ce0';
+    ctx.fillRect(cx-3, tTop+22, 6, 12);
+    ctx.lineWidth=1;
+  }
+  tower(L+26);
+  tower(R-26);
+  // ---- STORY 2 (middle, inset) ----
+  const s2L=L+52, s2R=R-52, s2W=s2R-s2L;
+  const s2Top = s1Top - 48, s2H=48;
+  ctx.fillStyle=stoneMid; ctx.fillRect(s2L, s2Top, s2W, s2H);
+  ctx.fillStyle=stoneDk; ctx.fillRect(s2R-8, s2Top, 8, s2H);
+  ctx.fillStyle='rgba(255,255,255,0.45)'; ctx.fillRect(s2L, s2Top, 5, s2H);
+  ctx.strokeStyle=stoneDk; ctx.lineWidth=1;
+  for(let yy=s2Top+12; yy<s2Top+s2H; yy+=12){ ctx.beginPath(); ctx.moveTo(s2L,yy); ctx.lineTo(s2R,yy); ctx.stroke(); }
+  // ---- STORY 3 (top keep, narrowest) ----
+  const s3L=L+96, s3R=R-96, s3W=s3R-s3L;
+  const s3Top=s2Top-46, s3H=46;
+  ctx.fillStyle=stone; ctx.fillRect(s3L, s3Top, s3W, s3H);
+  ctx.fillStyle=stoneDk; ctx.fillRect(s3R-8, s3Top, 8, s3H);
+  ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.fillRect(s3L, s3Top, 5, s3H);
+  // battlements on the keep
+  ctx.fillStyle=stone;
+  for(let xx=s3L; xx<s3R; xx+=16) ctx.fillRect(xx, s3Top-8, 10, 8);
+  // grand purple roof over the keep
+  ctx.fillStyle=roof;
+  ctx.beginPath();
+  ctx.moveTo(s3L-6, s3Top-8);
+  ctx.lineTo((s3L+s3R)/2, s3Top-40);
+  ctx.lineTo(s3R+6, s3Top-8);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle=roofDk;
+  ctx.beginPath();
+  ctx.moveTo((s3L+s3R)/2, s3Top-40); ctx.lineTo(s3R+6, s3Top-8); ctx.lineTo((s3L+s3R)/2, s3Top-8); ctx.closePath(); ctx.fill();
+  // central spire + flag
+  const mx=(s3L+s3R)/2;
+  ctx.strokeStyle='#8a6a2a'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(mx, s3Top-40); ctx.lineTo(mx, s3Top-54); ctx.stroke();
+  ctx.fillStyle='#ffd54a'; ctx.beginPath(); ctx.arc(mx, s3Top-40, 3, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle='#c23b3b';
+  const gfl = 5*Math.sin(animTimer*0.09);
+  ctx.beginPath(); ctx.moveTo(mx, s3Top-54); ctx.lineTo(mx+13, s3Top-50+gfl*0.3); ctx.lineTo(mx, s3Top-46); ctx.closePath(); ctx.fill();
+  ctx.lineWidth=1;
+  // ---- windows across stories ----
+  ctx.fillStyle='#2b2b3a';
+  function arch(cx, top, w, h){
+    ctx.fillStyle='#2b2b3a';
+    ctx.fillRect(cx-w/2, top, w, h);
+    ctx.beginPath(); ctx.arc(cx, top, w/2, Math.PI, 0); ctx.fill();
+    ctx.fillStyle='#7a9ce0';
+    ctx.fillRect(cx-w/2+2, top+2, w-4, h-3);
+    ctx.strokeStyle='#2b2b3a'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(cx, top-2); ctx.lineTo(cx, top+h); ctx.stroke();
+  }
+  const doorX = 9.5*TS; // 304 — align the central windows over the gate
+  arch(doorX, s3Top+14, 14, 18);                    // keep window, centered over the door
+  // three evenly-spaced story-2 windows with the middle one over the door
+  const wSpacing=44;
+  arch(doorX - wSpacing, s2Top+14, 12, 16);
+  arch(doorX,            s2Top+14, 12, 16);
+  arch(doorX + wSpacing, s2Top+14, 12, 16);
+  // ---- grand southern gate on story 1 ----
+  const gateX = 9.5*TS; // between the two gate tiles (9,10)
+  const gateW=46, gateH=52, gateTop=groundY-gateH;
+  ctx.fillStyle='#3a2a15'; // recessed frame
+  ctx.fillRect(gateX-gateW/2-3, gateTop-3, gateW+6, gateH+3);
+  ctx.fillStyle='#1a1208'; // dark archway
+  ctx.fillRect(gateX-gateW/2, gateTop, gateW, gateH);
+  ctx.beginPath(); ctx.arc(gateX, gateTop, gateW/2, Math.PI, 0); ctx.fill();
+  // wooden doors
+  ctx.fillStyle='#6b4420';
+  ctx.fillRect(gateX-gateW/2+4, gateTop+6, gateW-8, gateH-6);
+  ctx.beginPath(); ctx.arc(gateX, gateTop+6, gateW/2-4, Math.PI, 0); ctx.fill();
+  ctx.strokeStyle='#4a2e13'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(gateX, gateTop-8); ctx.lineTo(gateX, groundY); ctx.stroke();
+  // iron studs
+  ctx.fillStyle='#3a2a1a';
+  for(let yy=gateTop+12; yy<groundY-4; yy+=12){
+    ctx.fillRect(gateX-12, yy, 2.5, 2.5);
+    ctx.fillRect(gateX+10, yy, 2.5, 2.5);
+  }
+  ctx.lineWidth=1;
+  // portcullis hint at the arch top
+  ctx.strokeStyle='#555'; ctx.lineWidth=1;
+  for(let i=1;i<4;i++){ ctx.beginPath(); ctx.moveTo(gateX-gateW/2+i*11, gateTop); ctx.lineTo(gateX-gateW/2+i*11, gateTop+8); ctx.stroke(); }
+}
+
+function drawCommonsCows(){
+  COMMONS_COWS.forEach((c,i)=>{
+    const px = c.x*TS, py = c.y*TS;
+    const f = c.facing; // 1 = facing right, -1 = facing left
+    // slow grazing cycle: head down ~1/3 of the time
+    const graze = ((animTimer + i*70) % 210) < 70;
+    const bob = ((animTimer + i*40) % 96 < 48) ? 0 : 1;
+    // shadow
+    ctx.fillStyle='rgba(0,0,0,0.18)';
+    ctx.beginPath(); ctx.ellipse(px+16, py+27, 12, 3.5, 0, 0, Math.PI*2); ctx.fill();
+    // legs
+    ctx.fillStyle='#d8d8d8';
+    ctx.fillRect(px+7, py+22+bob, 3, 6);
+    ctx.fillRect(px+13, py+22+bob, 3, 6);
+    ctx.fillRect(px+19, py+22+bob, 3, 6);
+    ctx.fillRect(px+24, py+22+bob, 3, 6);
+    ctx.fillStyle='#3a2a20'; // hooves
+    ctx.fillRect(px+7, py+27+bob, 3, 2);
+    ctx.fillRect(px+13, py+27+bob, 3, 2);
+    ctx.fillRect(px+19, py+27+bob, 3, 2);
+    ctx.fillRect(px+24, py+27+bob, 3, 2);
+    // body
+    ctx.fillStyle='#f2f2f2';
+    ctx.fillRect(px+6, py+12+bob, 21, 11);
+    ctx.beginPath();
+    ctx.ellipse(px+16, py+12+bob, 11, 4, 0, Math.PI, 0);
+    ctx.fill();
+    // black spots
+    ctx.fillStyle='#2b2b2b';
+    ctx.beginPath(); ctx.ellipse(px+11, py+16+bob, 3.2, 2.6, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(px+21, py+19+bob, 3.6, 2.8, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(px+23, py+13+bob, 2.2, 1.8, 0, 0, Math.PI*2); ctx.fill();
+    // tail (opposite the head)
+    ctx.strokeStyle='#d8d8d8';
+    ctx.lineWidth=1.6;
+    ctx.beginPath();
+    ctx.moveTo(px+16 - f*11, py+14+bob);
+    ctx.lineTo(px+16 - f*13, py+22+bob);
+    ctx.stroke();
+    ctx.fillStyle='#2b2b2b';
+    ctx.beginPath(); ctx.arc(px+16 - f*13, py+22+bob, 1.6, 0, Math.PI*2); ctx.fill();
+    ctx.lineWidth=1;
+    // head at the front, dips down when grazing
+    const hx = px+16 + f*12;
+    const hy = py + (graze ? 21 : 13) + bob;
+    ctx.fillStyle='#f2f2f2';
+    ctx.fillRect(hx - 4, hy - 4, 8, 9); // head
+    ctx.fillStyle='#e8c8b0'; // muzzle
+    ctx.fillRect(hx - 3 + f*1, hy + 3, 6, 3);
+    // ears
+    ctx.fillStyle='#f2f2f2';
+    ctx.fillRect(hx - 6, hy - 3, 2.5, 3);
+    ctx.fillRect(hx + 3.5, hy - 3, 2.5, 3);
+    // horns
+    ctx.fillStyle='#d8c58a';
+    ctx.fillRect(hx - 4, hy - 6, 2, 2.5);
+    ctx.fillRect(hx + 2, hy - 6, 2, 2.5);
+    // eye (only when head up)
+    if(!graze){
+      ctx.fillStyle='#2b2b2b';
+      ctx.fillRect(hx + f*1, hy - 1, 1.6, 1.6);
+    }
+  });
+}
+
+function drawCommonsNpcs(){
+  COMMONS_NPCS.forEach((n,i)=>{
+    const px = n.x*TS, py = n.y*TS;
+    const bob = ((animTimer + i*29) % 84 < 42) ? 0 : 1;
+    const short = n.name==='Child';
+    const yOff = short ? 5 : 0; // children are smaller
+    ctx.fillStyle='#f4c98a'; // skin
+    ctx.fillRect(px+11, py+4+bob+yOff, 10, 8-(short?1:0));
+    ctx.fillStyle=n.hair;
+    ctx.fillRect(px+10, py+2+bob+yOff, 12, 4);
+    ctx.fillStyle=n.tunic;
+    ctx.fillRect(px+8, py+12+bob+yOff, 16, 12-yOff);
+    ctx.fillStyle='#8a5a2c'; // legs
+    ctx.fillRect(px+9, py+24+bob, 6, 6);
+    ctx.fillRect(px+17, py+24+bob, 6, 6);
+  });
+}
+
 function drawFisherman(){
   const px = FISHERMAN.x*TS, py = FISHERMAN.y*TS;
   const bob = (animTimer%90<45)?0:1;
@@ -2400,6 +2953,8 @@ function drawOverworld(){
         if(map[y][x]===27) drawTile(x,y,27);
     drawFisherman();
   }
+  if(player.zone==='meadow'){ drawCommonsCows(); drawCommonsNpcs(); }
+  if(player.zone==='citadel') drawCitadelCastle();
   if(player.zone==='inn'){ drawInnkeeper(); drawPatrons(); }
   if(player.zone==='store') drawShopkeeper();
   drawPlayerSprite(player.x*TS, player.y*TS);
@@ -2417,6 +2972,8 @@ function tryMove(dx,dy){
   const nx=player.x+dx, ny=player.y+dy;
   const t = tileAt(nx,ny);
   if(isBlocked(t)) return;
+  if(player.zone==='meadow' && COMMONS_NPCS.some(n=>n.x===nx && n.y===ny)) return; // villagers block the way
+  if(player.zone==='meadow' && COMMONS_COWS.some(c=>c.x===nx && c.y===ny)) return; // cows block the way
   if(player.zone==='overworld' && nx===FISHERMAN.x && ny===FISHERMAN.y) return; // fisherman blocks his fishing spot
   if(player.zone==='overworld' && ((nx===FISHERMAN.x-1 && ny===FISHERMAN.y) || (nx===FISHERMAN.x && ny===FISHERMAN.y+1))) return; // his chair and tackle box
   if(player.zone==='inn' && nx===INNKEEPER.x && ny===INNKEEPER.y) return; // innkeeper blocks the way
@@ -2449,16 +3006,35 @@ function tryMove(dx,dy){
     return;
   }
   if(t===13){ // zone exit
-    if(player.zone==='overworld'){
+    if(player.zone==='overworld' && nx>=COLS-1){ // east pass → desert
       setActiveZone('desert');
       player.x=1; player.y=7;
       player.facing='right';
-      state='dialog';
-      showDialogue(
-        `<b style="color:#e0c37a">THE SCORCHED EXPANSE</b><br>A blistering desert stretches before you. The creatures here are far deadlier — tread carefully.`,
-        {center:true, buttons:[{label:'ONWARD', action:()=>{ hideDialogue(); state='overworld'; }}]}
-      );
-    } else {
+      if(!player.desertSeen){
+        player.desertSeen = true;
+        state='dialog';
+        showDialogue(
+          `<b style="color:#e0c37a">THE SCORCHED EXPANSE</b><br>A blistering desert stretches before you. The creatures here are far deadlier — tread carefully.`,
+          {center:true, buttons:[{label:'ONWARD', action:()=>{ hideDialogue(); state='overworld'; }}]}
+        );
+      }
+    } else if(player.zone==='overworld' && nx<=0){ // west path → meadow
+      setActiveZone('meadow');
+      player.x=18; player.y=7;
+      player.facing='left';
+    } else if(player.zone==='meadow' && ny<=0){ // north gate → citadel
+      setActiveZone('citadel');
+      player.x=9; player.y=ROWS-2;
+      player.facing='up';
+    } else if(player.zone==='meadow'){ // east path → back to outskirts
+      setActiveZone('overworld');
+      player.x=1; player.y=7;
+      player.facing='right';
+    } else if(player.zone==='citadel'){ // south gate → back to the commons
+      setActiveZone('meadow');
+      player.x=9; player.y=1;
+      player.facing='down';
+    } else { // desert → back to the marketplace
       setActiveZone('overworld');
       player.x=18; player.y=7;
       player.facing='left';
@@ -2466,7 +3042,7 @@ function tryMove(dx,dy){
     persistSave();
     return;
   }
-  if(t===0 || t===15){
+  if((t===0 || t===15) && player.zone!=='meadow'){
     if(Math.random()<0.16){
       startRandomBattle();
       return;
@@ -2721,6 +3297,18 @@ window.__ff1_fishermanSell = (kind)=>{
   renderFishermanShop(`Sold a ${f.name} for ${f.sell} G!`);
 };
 
+function nearCommonsNpc(){
+  if(player.zone!=='meadow') return null;
+  return COMMONS_NPCS.find(n=> Math.abs(player.x-n.x)+Math.abs(player.y-n.y) <= 1) || null;
+}
+function commonsNpcDialog(npc){
+  state='dialog';
+  const line = npc.lines[Math.floor(Math.random()*npc.lines.length)];
+  showDialogue(
+    `<b style="color:#9fb3ff">${npc.name.toUpperCase()}</b><br>${line}`,
+    {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+  );
+}
 function nearFisherman(){
   if(player.zone!=='overworld') return false;
   return (Math.abs(player.x-FISHERMAN.x) + Math.abs(player.y-FISHERMAN.y)) <= 1;
@@ -2738,6 +3326,17 @@ function interact(){
     }
     if(player.zone==='room'){
       if(nearChest()) openStorage();
+      return;
+    }
+    if(player.zone==='meadow'){
+      const npc = nearCommonsNpc();
+      if(npc){ commonsNpcDialog(npc); return; }
+      const cow = COMMONS_COWS.find(c=> Math.abs(player.x-c.x)+Math.abs(player.y-c.y) <= 1);
+      if(cow){
+        state='dialog';
+        showDialogue(`<b style="color:#9fb3ff">COW</b><br>"Moooooo."`,
+          {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]});
+      }
       return;
     }
     if(player.zone==='store'){
@@ -4263,10 +4862,34 @@ function drawBattle(){
 }
 
 // ---------- MAIN LOOP ----------
+// ---------- CACTUS PRICKS ----------
+function isCactusTile(x,y){
+  // must match the render seed: seed<2 draws a cactus, otherwise a boulder
+  return tileAt(x,y)===14 && ((x*7 + y*11) % 4) < 2;
+}
+function adjacentToCactus(){
+  return isCactusTile(player.x+1,player.y) || isCactusTile(player.x-1,player.y) ||
+         isCactusTile(player.x,player.y+1) || isCactusTile(player.x,player.y-1);
+}
+let lastCactusTick = 0;
+function updateCactusDamage(){
+  if(state!=='overworld' || player.zone!=='desert') return;
+  if(!adjacentToCactus()) return;
+  const now = performance.now();
+  if(now - lastCactusTick < 1000) return;
+  lastCactusTick = now;
+  if(player.hp > 1){
+    player.hp--;
+    fishingToast = {text:'-1', color:'#ff6b6b', until: now+600};
+    updateStatBar();
+  }
+}
+
 function frame(){
   animTimer++;
+  updateCactusDamage();
   const standTile = tileAt(player.x, player.y);
-  const canInteract = (state==='overworld' && ((standTile===6 || standTile===7 || standTile===8) || adjacentToVine() || !!adjacentToWater() || nearFisherman() || nearInnkeeper() || nearShopkeeper() || !!nearPatron() || nearChest()))
+  const canInteract = (state==='overworld' && ((standTile===6 || standTile===7 || standTile===8) || adjacentToVine() || !!adjacentToWater() || nearFisherman() || nearInnkeeper() || nearShopkeeper() || !!nearPatron() || !!nearCommonsNpc() || (player.zone==='meadow' && COMMONS_COWS.some(c=>Math.abs(player.x-c.x)+Math.abs(player.y-c.y)<=1)) || nearChest()))
     || (state==='fishing' && fishing && fishing.phase==='bite');
   btnInteractEl.classList.toggle('canInteract', canInteract);
   ctx.clearRect(0,0,canvas.width,canvas.height);
