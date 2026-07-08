@@ -5,33 +5,46 @@ TO DO LIST:
 
 -add diablo style waypoint system
 
+# v0.06 (7/7/2026)
+-Numerous visual changes
+
+-Added castle interior with two areas
+
+-Added two quests
+
+-Added a zone called The Farmland
+
+-Added a farming mechanic
+
+-Added interior area to the garrison
+
 # v0.05 (7/5/2026)
 -Added 1 ticking damage when standing near cacti
 
 -Added foliage to the water in The Outskirts
 
--Added a new Zone to the left of The Outskirts called The Commons
+-Added a new zone to the left of The Outskirts called The Commons
 
--Added new zone called The Citadel with a Castle
+-Added new zone called The Citadel with a castle
 
 # v0.04 (7/5/2026)
--added fisherman npc who sells a fishing rod and buys fish
+-Added fisherman npc who sells a fishing rod and buys fish
 
--fishing now requires an equipped fishing rod
+-Fishing now requires an equipped fishing rod
 
--added zone names that display on the top right
+-Added zone names that display on the top right
 
 # v0.03 (7/5/2026)
--added a storage chest to the inns bedroom with additional purchasable tabs and renamable tabs
+-Added a storage chest to the inns bedroom with additional purchasable tabs and renamable tabs
 
--added fishing system
+-Added fishing system
 
 # v0.02 (7/4/2026)
--added enterable inn and shop
+-Added enterable inn and shop
 
--added tabs to shop
+-Added tabs to shop
 
--blended path with dirt ground under inn and shop
+-Blended path with dirt ground under inn and shop
 
 # v0.01 (7/4/2026)
 Game Created
