@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>DRAGON HEART</title>
 <style>
+  *{
+    touch-action: manipulation;      /* disables double-tap-to-zoom */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
   :root{
     --bg:#0a0a23;
     --box:#0d1b4c;
@@ -54,7 +62,7 @@
   }
   canvas{
     display:block;
-    image-rendering: pixelated;
+    image-rendering: auto;
     background:#000;
   }
   .box{
@@ -153,7 +161,15 @@
     justify-content:flex-end;
   }
   .enemyName{font-size:11px; color:var(--gold); margin-bottom:2px;}
-  #enemyStatus{position:absolute; top:8px; left:8px; width:180px;}
+  #enemyStatus{position:absolute; top:8px; left:8px; width:230px;}
+  .combatLog{ font-size:9px; line-height:1.45; padding:6px 8px; }
+  .combatLog .logTitle{ color:var(--gold); font-size:8px; letter-spacing:1px; margin-bottom:3px; opacity:0.85; }
+  .combatLog .logScroll{ max-height:65px; overflow-y:auto; }
+  .combatLog .logLine{ color:#d8d8e0; margin:1px 0; }
+  .combatLog .logLine:last-child{ color:#fff; }
+  .combatLog .logScroll::-webkit-scrollbar{ width:5px; }
+  .combatLog .logScroll::-webkit-scrollbar-thumb{ background:var(--border); border-radius:2px; }
+  .combatLog .logScroll::-webkit-scrollbar-track{ background:transparent; }
   #playerStatus{position:absolute; top:8px; right:8px; width:190px; display:none;}
   .flash{animation: flash 0.15s linear 2;}
   @keyframes flash{ 0%{filter:brightness(3);} 100%{filter:brightness(1);} }
@@ -794,6 +810,7 @@
     <button id="btnMenu">CHARACTER (C)</button>
     <button id="btnSkills">PASSIVES (P)</button>
     <button id="btnSave">SAVE</button>
+    <button id="btnGrid">GRID (G)</button>
   </div>
 </div>
 <div id="hint">Arrow keys / WASD or the D-pad to move. Walk onto glowing doors to enter buildings. Tall grass hides monsters...</div>
@@ -807,6 +824,22 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const TS = 32; // tile size
 const COLS = 20, ROWS = 15;
+
+// ---------- CRISP RENDERING: supersample the canvas backing store ----------
+// The stage is CSS-scaled up, which would blur a 640x480 canvas. Render at 2x
+// internal resolution and scale the drawing context so all existing coordinates
+// (still authored against 640x480) stay the same, but text/edges are far sharper.
+const RENDER_SCALE = 2;
+(function setupCrispCanvas(){
+  const cssW = 640, cssH = 480;
+  canvas.width = cssW * RENDER_SCALE;
+  canvas.height = cssH * RENDER_SCALE;
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
+})();
+// logical dimensions used by all draw code (unchanged from before)
+const VIEW_W = 640, VIEW_H = 480;
 
 // ---------- SCALE STAGE RELIABLY (avoids CSS zoom's absolute-positioning quirks) ----------
 let __ff1_naturalW = null, __ff1_naturalH = null;
@@ -864,6 +897,11 @@ function buildMap(){
   g[2][7]=9; g[2][8]=9; g[2][9]=9;
   g[3][7]=10; g[3][8]=10; g[3][9]=10;
   g[4][7]=10; g[4][8]=7; g[4][9]=10;
+  g[4][5]=0; // grass in the gap between the inn and shop
+  // dirt path running in front of the inn and shop (row 5)
+  for(let x=2;x<=9;x++) g[5][x]=1;
+  // signpost pointing to the desert (east) and commons (west)
+  g[6][4]=46;
   // lakes — 3x3 blocked footprints; rendered as true circles in drawLakes()
   for(let y=9;y<12;y++) for(let x=1;x<4;x++) g[y][x]=3;
   for(let y=9;y<12;y++) for(let x=14;x<17;x++) g[y][x]=3;
@@ -877,8 +915,9 @@ function buildMap(){
   for(let x=14;x<18;x++) g[4][x]=11;
   // cobblestone path from the forecourt down to the dirt road (row 7)
   g[5][16]=11; g[6][16]=11;
-  // magical vine sealing the eastern pass (right of the castle)
-  g[7][18]=12;
+  // eastern exit to the desert at (19,7); a magical vine covers it until the dragon falls
+  g[7][18]=1;   // path leading up to the covered exit
+  g[7][19]=13;  // the exit tile itself (vine drawn over it while sealed)
   // open western path to the meadow
   g[7][0]=13;
   // wooden pier extending into the right lake
@@ -900,7 +939,8 @@ function buildMeadowMap(){
   // exit back east to the marketplace (set after cobblestone so it isn't overwritten)
   g[7][19]=13;
   // cobblestone branches up and down to the houses
-  [3,13,17].forEach(bx=>{ g[6][bx]=11; g[8][bx]=11; });
+  [3,13,17].forEach(bx=>{ g[6][bx]=11; });
+  g[8][3]=11; g[8][17]=11; // south stubs (col 13 left as grass)
   g[8][8]=11; // south stem toward the S house only (north stub removed after path shift)
   for(let y=4;y<=6;y++){ g[y][3]=11; g[y][13]=11; }   // north cul-de-sac stems
   // northern path between the top two houses, up to the Citadel gate
@@ -919,6 +959,9 @@ function buildMeadowMap(){
   house(17, 10, 28); // SE cottage
   // village well tucked between the two southern houses (bottom-right)
   g[12][13]=29;
+  // southern path from the avenue down to the Farmland gate
+  for(let y=8;y<=13;y++) g[y][12]=11;
+  g[14][12]=13; // exit south to The Farmland
   return g;
 }
 function buildCitadelMap(){
@@ -940,12 +983,136 @@ function buildCitadelMap(){
       g[y][x]=32;
     }
   }
-  // castle gate doorway at the south face (walkable-looking but blocked; decorative)
-  g[4][9]=33; g[4][10]=33;
+  // castle gate doorway at the south face — left tile is the enterable door
+  g[4][9]=35; g[4][10]=33;
   // red carpet, 3 tiles wide, rolling south from the castle door toward the entrance
   for(let y=5;y<=ROWS-2;y++){ g[y][8]=34; g[y][9]=34; g[y][10]=34; }
   // re-assert the exit tile so the carpet doesn't cover it
   g[ROWS-1][9]=13;
+  return g;
+}
+function buildHallMap(){
+  const g = [];
+  for(let y=0;y<ROWS;y++){
+    const row=[];
+    for(let x=0;x<COLS;x++) row.push(21); // void outside the hall
+    g.push(row);
+  }
+  // grand hall: walls ring x3..16, y1..13; polished stone floor inside
+  for(let y=1;y<=13;y++){
+    for(let x=3;x<=16;x++){
+      g[y][x] = (y===1||y===13||x===3||x===16) ? 41 : 36; // 41 = dark stone wall, 36 = polished floor
+    }
+  }
+  // red carpet runner down the center, from the north door to the south exits
+  for(let y=2;y<=12;y++){ g[y][9]=34; g[y][10]=34; }
+  // decorative pillars lining the hall (kept off the center carpet)
+  [5,7,12,14].forEach(px=>{ g[4][px]=41; g[7][px]=41; g[10][px]=41; });
+  // wall braziers (blocked light sources)
+  g[2][4]=40; g[2][15]=40;
+  g[12][4]=40; g[12][15]=40;
+  // north entrance to the Throne Room (rug tiles matching the south exits)
+  g[1][9]=19; g[1][10]=19;
+  // exit doors back out to the citadel courtyard (south wall)
+  g[13][9]=19;
+  g[13][10]=19;
+  return g;
+}
+function buildBarnInteriorMap(){
+  const g = [];
+  for(let y=0;y<ROWS;y++){
+    const row=[];
+    for(let x=0;x<COLS;x++) row.push(21); // void
+    g.push(row);
+  }
+  // barn interior: walls ring x4..15, y1..12; wood floor inside
+  for(let y=1;y<=12;y++){
+    for(let x=4;x<=15;x++){
+      g[y][x] = (y===1||y===12||x===4||x===15) ? 17 : 16;
+    }
+  }
+  // exit rug back out to the farmland (south)
+  g[11][9]=19;
+  return g;
+}
+function buildGarrisonMap(){
+  const g = [];
+  for(let y=0;y<ROWS;y++){
+    const row=[];
+    for(let x=0;x<COLS;x++) row.push(21); // void
+    g.push(row);
+  }
+  // garrison hall: dark stone walls ring x3..16, y1..13; stone floor inside
+  for(let y=1;y<=13;y++){
+    for(let x=3;x<=16;x++){
+      g[y][x] = (y===1||y===13||x===3||x===16) ? 41 : 31;
+    }
+  }
+  // wall braziers lighting the lair
+  g[2][4]=40; g[2][15]=40; g[12][4]=40; g[12][15]=40;
+  // a few rubble pillars (the dragon has wrecked the place)
+  g[5][6]=41; g[5][13]=41; g[9][6]=41; g[9][13]=41;
+  // scattered bone piles — the dragon's grim leftovers (walkable decoration)
+  [[5,3],[14,3],[4,6],[15,6],[5,8],[14,9],[4,10],[15,11],[7,11],[12,11]].forEach(([x,y])=>{ g[y][x]=47; });
+  // exit rug back out to the Outskirts (south)
+  g[13][9]=19; g[13][10]=19;
+  return g;
+}
+function buildFarmlandMap(){
+  const g = [];
+  for(let y=0;y<ROWS;y++){
+    const row=[];
+    for(let x=0;x<COLS;x++){
+      if(x===0||y===0||x===COLS-1||y===ROWS-1) row.push(2); // tree border
+      else row.push(0); // open grass
+    }
+    g.push(row);
+  }
+  // exit north back to the Commons
+  g[0][12]=13;
+  // barn on the middle-left near the west wall (footprint drawn as a single overlay)
+  for(let y=3;y<=6;y++){
+    for(let x=1;x<=4;x++){
+      g[y][x]=43;
+    }
+  }
+  g[6][2]=44; g[6][3]=44; // barn doors (enterable) at the base, under the drawn doors
+  // farming plots in the bottom-right: tilled soil beds with crop rows,
+  // separated by grass paths so you can walk between them
+  for(let x=13;x<=17;x++){
+    g[8][x]=48;
+    g[9][x]=48;
+    g[11][x]=48;
+    g[12][x]=48;
+  }
+  return g;
+}
+function buildThroneMap(){
+  const g = [];
+  for(let y=0;y<ROWS;y++){
+    const row=[];
+    for(let x=0;x<COLS;x++) row.push(21); // void
+    g.push(row);
+  }
+  // throne chamber: walls ring x4..15, y1..12; polished floor inside
+  for(let y=1;y<=12;y++){
+    for(let x=4;x<=15;x++){
+      g[y][x] = (y===1||y===12||x===4||x===15) ? 41 : 36;
+    }
+  }
+  // raised dais at the north end
+  for(let x=7;x<=12;x++){ g[3][x]=37; }
+  for(let x=8;x<=11;x++){ g[2][x]=37; }
+  // the throne, centered at the top of the dais
+  g[2][9]=39; g[2][10]=39;
+  // red carpet from the throne down to the south door
+  for(let y=4;y<=11;y++){ g[y][9]=34; g[y][10]=34; }
+  // flanking braziers beside the dais
+  g[3][6]=40; g[3][13]=40;
+  // guard pillars
+  [6,13].forEach(px=>{ g[6][px]=41; g[9][px]=41; });
+  // exit door back down to the main hall (south wall)
+  g[12][9]=19; g[12][10]=19;
   return g;
 }
 function buildDesertMap(){
@@ -1035,6 +1202,11 @@ const storeMap = buildStoreMap();
 const roomMap = buildRoomMap();
 const meadowMap = buildMeadowMap();
 const citadelMap = buildCitadelMap();
+const hallMap = buildHallMap();
+const throneMap = buildThroneMap();
+const farmlandMap = buildFarmlandMap();
+const barnMap = buildBarnInteriorMap();
+const garrisonMap = buildGarrisonMap();
 let map = overworldMap;
 const INNKEEPER = {x:10, y:4};
 const SHOPKEEPER = {x:10, y:4};
@@ -1052,7 +1224,15 @@ const COMMONS_NPCS = [
           `"Rain's been kind this season. The crops'll be fat come harvest."`]},
   {x:16, y:9,  tunic:'#6a3a8f', hair:'#1a1a1a', name:'Child',
    lines:[`"When I grow up I'm gonna be a hero like you! Pow! Pow!"`,
-          `"Did you really fight monsters? Were you scared? I wouldn't be. Maybe a little."`]}
+          `"Did you really fight monsters? Were you scared? I wouldn't be. Maybe a little."`]},
+  {x:2,  y:10, tunic:'#c76b98', hair:'#e0b84c', name:'Milkmaid',
+   lines:[`"Morning! Fresh milk from the cows every dawn — best in the whole kingdom, I'd wager."`,
+          `"Mind the cows, they're gentle souls. Give 'em a pat if you like."`,
+          `"A pail of milk and a warm loaf — that's a good day's work out here."`]}
+];
+// Farmland NPCs — the farmer tends the plots and sells seeds
+const FARMLAND_NPCS = [
+  {x:5, y:6, name:'Farmer', hair:'#6b4a2a', tunic:'#7a5a34'}
 ];
 const COMMONS_COWS = [
   {x:2, y:11, facing:1},
@@ -1079,32 +1259,39 @@ const ZONE_NAMES = {
   store:'The Shop',
   room:'The Inn',
   meadow:'The Commons',
-  citadel:'The Citadel'
+  citadel:'The Citadel',
+  hall:'Castle Main Hall',
+  throne:'The Throne Room',
+  farmland:'The Farmland',
+  barn:'The Barn',
+  garrison:'The Garrison'
 };
 function updateZoneBox(){
   const el = document.getElementById('zoneBox');
   if(el) el.textContent = ZONE_NAMES[player.zone] || 'The Marketplace';
 }
 function setActiveZone(zone){
+  // if the milkmaid was mid-walk and we're leaving the Commons, she finishes her trip
+  if(milkmaidWalk && zone!=='meadow'){ milkmaidWalk = null; milkmaidAtInn = true; }
+  // if she's mid-return and the player leaves her current leg's zone, she advances off-screen
+  if(milkmaidReturnStage && zoneForStage(milkmaidReturnStage)===player.zone && zone!==player.zone){
+    advanceMilkmaidStage();
+  }
   player.zone = zone;
-  map = (zone==='desert') ? desertMap : (zone==='inn') ? innMap : (zone==='store') ? storeMap : (zone==='room') ? roomMap : (zone==='meadow') ? meadowMap : (zone==='citadel') ? citadelMap : overworldMap;
+  map = (zone==='desert') ? desertMap : (zone==='inn') ? innMap : (zone==='store') ? storeMap : (zone==='room') ? roomMap : (zone==='meadow') ? meadowMap : (zone==='citadel') ? citadelMap : (zone==='hall') ? hallMap : (zone==='throne') ? throneMap : (zone==='farmland') ? farmlandMap : (zone==='barn') ? barnMap : (zone==='garrison') ? garrisonMap : overworldMap;
   updateZoneBox();
 }
 function applyVineState(){
-  if(player.vineDestroyed){
-    overworldMap[7][18]=1;   // vine gone, path restored
-    overworldMap[7][19]=13;  // eastern exit revealed
-  } else {
-    overworldMap[7][18]=12;
-    overworldMap[7][19]=2;
-  }
+  overworldMap[7][18]=1;   // path up to the exit
+  overworldMap[7][19]=13;  // exit tile is always present; vine overlay covers it while sealed
 }
+function vineSealed(){ return !player.vineDestroyed; }
 
 function tileAt(x,y){
   if(y<0||y>=ROWS||x<0||x>=COLS) return 2;
   return map[y][x];
 }
-function isBlocked(t){ return t===2||t===3||t===5||t===9||t===10||t===12||t===14||t===17||t===18||t===20||t===21||t===22||t===23||t===24||t===26||t===28||t===29||t===30||t===32||t===33; }
+function isBlocked(t){ return t===2||t===3||t===5||t===9||t===10||t===12||t===14||t===17||t===18||t===20||t===21||t===22||t===23||t===24||t===26||t===28||t===29||t===30||t===32||t===33||t===38||t===39||t===40||t===41||t===43||t===45||t===46; }
 
 // ---------- PLAYER ----------
 const player = {
@@ -1126,7 +1313,16 @@ const player = {
   zone:'overworld',
   vineDestroyed:false,
   desertSeen:false,
-  fishCounts:{}
+  fishCounts:{},
+  seedCounts:{},
+  cropCounts:{},
+  farmPlots:{}, // "x,y" -> { crop:'cabbage', plantedAt: <ms timestamp> }
+  milkQuest:'none', // none -> active (carrying pail) -> done
+  dragonQuest:'none', // none -> active -> done (offered by the Captain of the Guard)
+  captainMet:false,   // has the first-entry hall cutscene played
+  captainCharged:false, // captain & guards have charged into the garrison
+  captainRemainsFound:false, // player has found the captain's remains
+  avengeQuest:'none' // none -> active (avenge him & tell the King) -> done
 };
 
 // ---------- ENEMY DATA ----------
@@ -1138,8 +1334,8 @@ const enemyTypes = [
 ];
 const desertEnemyTypes = [
   {name:'Sand Slime', hp:36, atk:13, def:5, exp:30, gold:36, color:'#d8b96a', shape:'blob'},
-  {name:'Vulture',    hp:40, atk:15, def:6, exp:38, gold:44, color:'#8a6a45', shape:'bat'},
-  {name:'Scorpion',   hp:52, atk:17, def:8, exp:48, gold:56, color:'#c9803a', shape:'gob'},
+  {name:'Vulture',    hp:40, atk:15, def:6, exp:38, gold:44, color:'#8a6a45', shape:'vulture'},
+  {name:'Scorpion',   hp:52, atk:17, def:8, exp:48, gold:56, color:'#c9803a', shape:'scorpion'},
   {name:'Dune Stalker', hp:62, atk:19, def:9, exp:60, gold:70, color:'#e0c37a', shape:'wolf'},
 ];
 const boss = {name:'GREEN DRAGON', hp:150, atk:19, def:8, exp:0, gold:0, color:'#3a9d23', shape:'dragon'};
@@ -1258,6 +1454,7 @@ window.__ff1_dismissSplash = ()=>{
 let battle = null;
 let msgQueue = [];
 let animTimer = 0;
+let showTileGrid = false; // debug: toggle with the G key to see tile coordinates
 let walkFrame = 0;
 
 const dlg = document.getElementById('dialogue');
@@ -1342,7 +1539,7 @@ function hideMenu(){ menuPanel.style.display='none'; menuPanel.innerHTML=''; }
 
 // ---------- OVERWORLD RENDER ----------
 const TILE_COLORS = {
-  0:'#1c6b2e', 1:'#c2a366', 2:'#0d3a17', 3:'#2454a8', 4:'#8a6a45', 5:'#5b5b6b', 6:'#d9b779', 7:'#d9b779', 8:'#4a4a52', 11:'#7d7d88', 12:'#c2a366', 13:'#c2a366', 14:'#d8b96a', 15:'#d8b96a', 16:'#9a6a38', 17:'#4a3018', 18:'#7a4a20', 19:'#9a6a38', 20:'#9a6a38', 21:'#050508', 22:'#4a3018', 23:'#4a3018', 24:'#9a6a38', 25:'#4a3018', 26:'#9a6a38', 27:'#2454a8', 28:'#5e3a1a', 29:'#6e6e78', 30:'#e8e8ee', 31:'#c4c4cc', 32:'#c4c4cc', 33:'#c4c4cc', 34:'#8f2b2b'
+  0:'#1c6b2e', 1:'#c2a366', 2:'#0d3a17', 3:'#2454a8', 4:'#8a6a45', 5:'#5b5b6b', 6:'#d9b779', 7:'#d9b779', 8:'#4a4a52', 11:'#7d7d88', 12:'#c2a366', 13:'#c2a366', 14:'#d8b96a', 15:'#d8b96a', 16:'#9a6a38', 17:'#4a3018', 18:'#7a4a20', 19:'#9a6a38', 20:'#9a6a38', 21:'#050508', 22:'#4a3018', 23:'#4a3018', 24:'#9a6a38', 25:'#4a3018', 26:'#9a6a38', 27:'#2454a8', 28:'#5e3a1a', 29:'#6e6e78', 30:'#e8e8ee', 31:'#c4c4cc', 32:'#c4c4cc', 33:'#c4c4cc', 34:'#8f2b2b', 35:'#3a2a15', 36:'#b8b4c0', 37:'#8f8f9a', 38:'#8f8f9a', 39:'#d8b45a', 40:'#4a3018', 41:'#4f4c5a', 42:'#3a2a15', 43:'#1c6b2e', 44:'#3a2410', 45:'#c9a43a', 46:'#1c6b2e', 47:'#c4c4cc', 48:'#6b4a2a'
 };
 function drawTile(x,y,t){
   const px=x*TS, py=y*TS;
@@ -1590,10 +1787,270 @@ function drawTile(x,y,t){
     // weave shading
     ctx.fillStyle='#7c2323';
     for(let i=0;i<4;i++) ctx.fillRect(px, py+i*8+ (animTimer*0? 0:0) +3, TS, 1);
-    // gold trim only on the outer edges of the runner (x===8 left edge, x===10 right edge)
+    // gold trim on the outer edges of the runner (auto-detect where carpet ends)
     ctx.fillStyle='#d8b45a';
-    if(x===8) ctx.fillRect(px+2, py, 2, TS);   // left border
-    if(x===10) ctx.fillRect(px+TS-4, py, 2, TS); // right border
+    if(tileAt(x-1,y)!==34) ctx.fillRect(px+2, py, 2, TS);      // left border
+    if(tileAt(x+1,y)!==34) ctx.fillRect(px+TS-4, py, 2, TS);   // right border
+  } else if(t===35){ // castle entrance door
+    ctx.fillStyle='#c4c4cc'; // stone base (blends with castle facade)
+    ctx.fillRect(px,py,TS,TS);
+    ctx.fillStyle='#3a2a15'; // dark doorway
+    ctx.fillRect(px+5, py+4, TS-10, TS-4);
+    ctx.fillStyle='#5e3a1a'; // wooden double doors
+    ctx.fillRect(px+6, py+6, TS-12, TS-6);
+    ctx.strokeStyle='#3a2410';
+    ctx.beginPath();
+    ctx.moveTo(px+16, py+6); ctx.lineTo(px+16, py+TS);
+    ctx.stroke();
+    // arched stone top
+    ctx.fillStyle='#9a9aa6';
+    ctx.beginPath();
+    ctx.arc(px+16, py+6, 6, Math.PI, 0);
+    ctx.fill();
+    // handles + inviting glow
+    ctx.fillStyle='#d8b45a';
+    ctx.beginPath(); ctx.arc(px+12, py+18, 1.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px+20, py+18, 1.5, 0, Math.PI*2); ctx.fill();
+    const dg = 0.10 + 0.08*Math.sin(animTimer*0.05);
+    ctx.fillStyle=`rgba(255,213,74,${dg.toFixed(2)})`;
+    ctx.fillRect(px+6, py+6, TS-12, TS-6);
+  } else if(t===36){ // polished hall floor
+    ctx.fillStyle='#b8b4c0';
+    ctx.fillRect(px,py,TS,TS);
+    // large marble tiles with a soft diagonal sheen
+    ctx.strokeStyle='#a6a2b0';
+    ctx.lineWidth=1;
+    ctx.strokeRect(px+0.5, py+0.5, TS-1, TS-1);
+    ctx.fillStyle='rgba(255,255,255,0.10)';
+    ctx.beginPath();
+    ctx.moveTo(px+3, py+TS-3); ctx.lineTo(px+TS-3, py+3);
+    ctx.lineTo(px+TS-3, py+8); ctx.lineTo(px+8, py+TS-3);
+    ctx.closePath(); ctx.fill();
+  } else if(t===37 || t===38){ // throne dais (raised stone)
+    ctx.fillStyle='#9a9aa6';
+    ctx.fillRect(px,py,TS,TS);
+    ctx.fillStyle='#8a8a96';
+    ctx.fillRect(px, py, TS, 6); // step lip shadow
+    ctx.fillStyle='rgba(255,255,255,0.15)';
+    ctx.fillRect(px, py+6, TS, 2);
+    ctx.strokeStyle='#7a7a86';
+    ctx.strokeRect(px+0.5, py+0.5, TS-1, TS-1);
+  } else if(t===39){ // throne
+    // dais underneath
+    ctx.fillStyle='#9a9aa6';
+    ctx.fillRect(px,py,TS,TS);
+    // red seat cushion
+    ctx.fillStyle='#8f2b2b';
+    ctx.fillRect(px+9, py+14, 14, 12);
+    // gold throne frame + tall back
+    ctx.fillStyle='#d8b45a';
+    ctx.fillRect(px+7, py+2, 3, 26);   // left post
+    ctx.fillRect(px+22, py+2, 3, 26);  // right post
+    ctx.fillRect(px+7, py+2, 18, 4);   // top rail
+    ctx.fillRect(px+7, py+24, 18, 4);  // base
+    // finials
+    ctx.beginPath(); ctx.arc(px+8.5, py+2, 2.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px+23.5, py+2, 2.5, 0, Math.PI*2); ctx.fill();
+    // gemstone
+    ctx.fillStyle='#4a7fd0';
+    ctx.beginPath(); ctx.arc(px+16, py+8, 2, 0, Math.PI*2); ctx.fill();
+  } else if(t===40){ // wall brazier
+    // polished hall floor base (matches surrounding floor)
+    ctx.fillStyle='#b8b4c0';
+    ctx.fillRect(px,py,TS,TS);
+    ctx.strokeStyle='#a6a2b0';
+    ctx.lineWidth=1;
+    ctx.strokeRect(px+0.5, py+0.5, TS-1, TS-1);
+    // iron bowl
+    ctx.fillStyle='#2b2b30';
+    ctx.beginPath();
+    ctx.moveTo(px+8, py+20); ctx.lineTo(px+24, py+20);
+    ctx.lineTo(px+21, py+27); ctx.lineTo(px+11, py+27);
+    ctx.closePath(); ctx.fill();
+    ctx.fillRect(px+15, py+27, 2, 4); // stand
+    // animated flame
+    const flick = (animTimer%14<7)?0:2;
+    ctx.fillStyle='#ff8c1a';
+    ctx.beginPath();
+    ctx.moveTo(px+16, py+8-flick);
+    ctx.quadraticCurveTo(px+22, py+16, px+18, py+20);
+    ctx.quadraticCurveTo(px+20, py+15, px+16, py+12);
+    ctx.quadraticCurveTo(px+12, py+15, px+14, py+20);
+    ctx.quadraticCurveTo(px+10, py+16, px+16, py+8-flick);
+    ctx.fill();
+    ctx.fillStyle='#ffe066';
+    ctx.beginPath(); ctx.arc(px+16, py+17, 2.5, 0, Math.PI*2); ctx.fill();
+    // warm glow
+    const gA = 0.10 + 0.06*Math.sin(animTimer*0.1);
+    ctx.fillStyle=`rgba(255,140,26,${gA.toFixed(2)})`;
+    ctx.beginPath(); ctx.ellipse(px+16, py+TS, 16, 10, 0, 0, Math.PI*2); ctx.fill();
+  } else if(t===44){ // barn door footprint — plain grass; the barn overlay draws the red doors on top
+    ctx.fillStyle='#1c6b2e';
+    ctx.fillRect(px,py,TS,TS);
+  } else if(t===45){ // hay bale
+    // floor base drawn by caller; draw a round hay bale
+    ctx.fillStyle='#16401e';
+    ctx.fillRect(px,py,TS,TS);
+    ctx.fillStyle='#c9a43a';
+    ctx.fillRect(px+5, py+9, TS-10, TS-15);
+    // rounded top
+    ctx.beginPath();
+    ctx.ellipse(px+16, py+9, (TS-10)/2, 5, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle='#b8922e';
+    ctx.beginPath();
+    ctx.ellipse(px+16, py+TS-6, (TS-10)/2, 4, 0, 0, Math.PI*2);
+    ctx.fill();
+    // straw texture lines
+    ctx.strokeStyle='#9a7a24';
+    ctx.lineWidth=1;
+    for(let i=0;i<3;i++){
+      ctx.beginPath();
+      ctx.moveTo(px+6, py+12+i*4);
+      ctx.lineTo(px+TS-6, py+12+i*4);
+      ctx.stroke();
+    }
+    // binding twine
+    ctx.strokeStyle='#6b5418';
+    ctx.beginPath();
+    ctx.moveTo(px+11, py+9); ctx.lineTo(px+11, py+TS-6);
+    ctx.moveTo(px+21, py+9); ctx.lineTo(px+21, py+TS-6);
+    ctx.stroke();
+  } else if(t===42){ // interior door to the throne room (in dark stone wall)
+    ctx.fillStyle='#4f4c5a'; // dark stone wall base
+    ctx.fillRect(px,py,TS,TS);
+    ctx.fillStyle='#2a2410'; // dark doorway recess
+    ctx.fillRect(px+5, py+3, TS-10, TS-3);
+    ctx.fillStyle='#5e3a1a'; // wooden doors
+    ctx.fillRect(px+6, py+5, TS-12, TS-5);
+    ctx.strokeStyle='#3a2410';
+    ctx.beginPath(); ctx.moveTo(px+16, py+5); ctx.lineTo(px+16, py+TS); ctx.stroke();
+    // gold arch trim
+    ctx.strokeStyle='#d8b45a';
+    ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(px+16, py+5, 8, Math.PI, 0); ctx.stroke();
+    ctx.lineWidth=1;
+    // handles
+    ctx.fillStyle='#d8b45a';
+    ctx.beginPath(); ctx.arc(px+12, py+18, 1.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px+20, py+18, 1.5, 0, Math.PI*2); ctx.fill();
+    // inviting glow
+    const tg = 0.10 + 0.08*Math.sin(animTimer*0.05);
+    ctx.fillStyle=`rgba(255,213,74,${tg.toFixed(2)})`;
+    ctx.fillRect(px+6, py+5, TS-12, TS-5);
+  } else if(t===41){ // dark stone hall wall
+    ctx.fillStyle='#4f4c5a';
+    ctx.fillRect(px,py,TS,TS);
+    // masonry block seams
+    ctx.strokeStyle='#3a3844';
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(px, py+TS/2); ctx.lineTo(px+TS, py+TS/2);
+    // offset vertical seams per row
+    const off = (y%2)? TS/2 : 0;
+    ctx.moveTo(px+off, py); ctx.lineTo(px+off, py+TS/2);
+    ctx.moveTo(px+((off+TS/2)%TS), py+TS/2); ctx.lineTo(px+((off+TS/2)%TS), py+TS);
+    ctx.stroke();
+    // top-edge highlight + bottom shadow for depth
+    ctx.fillStyle='rgba(255,255,255,0.06)';
+    ctx.fillRect(px, py, TS, 2);
+    ctx.fillStyle='rgba(0,0,0,0.20)';
+    ctx.fillRect(px, py+TS-3, TS, 3);
+  } else if(t===48){ // farming plot — plain freshly tilled soil (ready for planting)
+    // soil base
+    ctx.fillStyle='#6b4a2a';
+    ctx.fillRect(px,py,TS,TS);
+    // darker tilled furrows (horizontal rows)
+    ctx.fillStyle='#5a3c22';
+    for(let r=0;r<4;r++){
+      ctx.fillRect(px, py+3+r*8, TS, 3);
+    }
+    // lighter soil ridges between the furrows
+    ctx.fillStyle='#7d5730';
+    for(let r=0;r<4;r++){
+      ctx.fillRect(px, py+6+r*8, TS, 2);
+    }
+    // a few flecks of turned earth for texture
+    const seed = (x*7 + y*13) % 5;
+    ctx.fillStyle='#4a3018';
+    for(let i=0;i<3;i++){
+      const fx = px + 5 + ((seed+i*2)%6)*4;
+      const fy = py + 5 + ((seed+i)%3)*9;
+      ctx.fillRect(fx, fy, 2, 2);
+    }
+    // growing crop overlay (cabbage), if this plot is planted
+    if(player.zone==='farmland' && player.farmPlots){
+      const plot = player.farmPlots[x+','+y];
+      if(plot){
+        drawCropOnPlot(px, py, cropStage(plot));
+      }
+    }
+  } else if(t===46){ // signpost — grass base with a wooden post and two direction boards
+    ctx.fillStyle='#1c6b2e';
+    ctx.fillRect(px,py,TS,TS);
+    // shadow
+    ctx.fillStyle='rgba(0,0,0,0.18)';
+    ctx.beginPath(); ctx.ellipse(px+16, py+28, 8, 3, 0, 0, Math.PI*2); ctx.fill();
+    // post
+    ctx.fillStyle='#6b4420';
+    ctx.fillRect(px+14, py+8, 4, 20);
+    ctx.fillStyle='#5a3718';
+    ctx.fillRect(px+14, py+8, 1, 20);
+    // west board (points left) — upper
+    ctx.fillStyle='#8a5a2c';
+    ctx.beginPath();
+    ctx.moveTo(px+4, py+11);
+    ctx.lineTo(px+16, py+9);
+    ctx.lineTo(px+16, py+15);
+    ctx.lineTo(px+4, py+15);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#6b4420';
+    ctx.fillRect(px+4, py+14, 12, 1);
+    // east board (points right) — lower
+    ctx.fillStyle='#8a5a2c';
+    ctx.beginPath();
+    ctx.moveTo(px+28, py+19);
+    ctx.lineTo(px+16, py+17);
+    ctx.lineTo(px+16, py+23);
+    ctx.lineTo(px+28, py+23);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#6b4420';
+    ctx.fillRect(px+16, py+22, 12, 1);
+    // little engraved marks on each board
+    ctx.fillStyle='#c2a366';
+    ctx.fillRect(px+6, py+11, 6, 1);
+    ctx.fillRect(px+19, py+19, 6, 1);
+  } else if(t===47){ // bone pile — walkable decoration on the garrison floor
+    // stone floor base (matches garrison floor tile 31)
+    ctx.fillStyle='#c4c4cc';
+    ctx.fillRect(px,py,TS,TS);
+    ctx.strokeStyle='#b2b2ba';
+    ctx.lineWidth=1;
+    ctx.strokeRect(px+0.5, py+0.5, TS-1, TS-1);
+    // pseudo-random arrangement per tile so piles differ
+    const seed = (x*13 + y*7) % 4;
+    // scattered long bones (crossed)
+    ctx.strokeStyle='#e8e4d8';
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(px+7+seed, py+22); ctx.lineTo(px+20-seed, py+11);
+    ctx.moveTo(px+9, py+12+seed); ctx.lineTo(px+23, py+20-seed);
+    ctx.stroke();
+    // bone knobs (ends)
+    ctx.fillStyle='#f0ece0';
+    ctx.beginPath(); ctx.arc(px+7+seed, py+22, 1.6, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px+20-seed, py+11, 1.6, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px+23, py+20-seed, 1.6, 0, Math.PI*2); ctx.fill();
+    // a small skull
+    const skx = px+13+(seed%2)*2, sky = py+18;
+    ctx.fillStyle='#f0ece0';
+    ctx.beginPath(); ctx.arc(skx, sky, 4, 0, Math.PI*2); ctx.fill();
+    ctx.fillRect(skx-3, sky, 6, 4); // jaw block
+    // eye sockets
+    ctx.fillStyle='#3a3a44';
+    ctx.fillRect(skx-2.5, sky-1, 2, 2);
+    ctx.fillRect(skx+0.5, sky-1, 2, 2);
+    ctx.lineWidth=1;
   } else if(t===11){ // cobblestone
     const seed = (x*7 + y*3) % 5;
     ctx.save();
@@ -1623,34 +2080,11 @@ function drawTile(x,y,t){
       }
     }
     ctx.restore();
-  } else if(t===12){ // magical vine over the path
+  } else if(t===12){ // magical vine over the path — thick, tangled, spined
     // path base
     ctx.fillStyle='#b08f56';
     for(let i=0;i<3;i++) ctx.fillRect(px+4+i*9, py+4+((i%2)*10), 4,4);
-    // pulsing magical glow
-    const pulse = 0.25 + 0.2*Math.sin(animTimer*0.06);
-    ctx.fillStyle=`rgba(74,222,128,${pulse.toFixed(2)})`;
-    ctx.fillRect(px,py,TS,TS);
-    // thick crossing vines
-    ctx.strokeStyle='#1e7a2e';
-    ctx.lineWidth=4;
-    ctx.beginPath();
-    ctx.moveTo(px, py+4);
-    ctx.bezierCurveTo(px+12, py+14, px+20, py+2, px+TS, py+10);
-    ctx.moveTo(px, py+18);
-    ctx.bezierCurveTo(px+10, py+28, px+22, py+14, px+TS, py+24);
-    ctx.moveTo(px+6, py);
-    ctx.bezierCurveTo(px+2, py+12, px+14, py+22, px+10, py+TS);
-    ctx.stroke();
-    ctx.lineWidth=1;
-    // thorns
-    ctx.fillStyle='#2f8f45';
-    ctx.beginPath(); ctx.moveTo(px+10,py+9); ctx.lineTo(px+13,py+4); ctx.lineTo(px+14,py+10); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(px+20,py+21); ctx.lineTo(px+24,py+16); ctx.lineTo(px+25,py+23); ctx.closePath(); ctx.fill();
-    // glowing runic node
-    const glowR = 3 + Math.sin(animTimer*0.08)*1.2;
-    ctx.fillStyle='#a7ffb8';
-    ctx.beginPath(); ctx.arc(px+16, py+16, glowR, 0, Math.PI*2); ctx.fill();
+    drawVineOverlay(px, py);
   } else if(t===13){ // zone exit — path with flashing directional chevrons
     if(player.zone==='meadow'){
       // exact cobblestone match for the Commons avenue
@@ -1681,6 +2115,15 @@ function drawTile(x,y,t){
     } else if(player.zone==='desert'){
       ctx.fillStyle='#d8b96a';
       ctx.fillRect(px,py,TS,TS);
+    } else if(player.zone==='farmland'){
+      // grass to match the surrounding field
+      ctx.fillStyle='#1c6b2e';
+      ctx.fillRect(px,py,TS,TS);
+      // a few grass speckles for texture
+      ctx.fillStyle='#238a3a';
+      const gs=(x*5+y*3)%4;
+      ctx.fillRect(px+5+gs*3, py+8, 3, 3);
+      ctx.fillRect(px+20-gs*2, py+20, 3, 3);
     } else if(player.zone==='citadel'){
       // light gray stone floor to match the Citadel
       ctx.fillStyle='#c4c4cc';
@@ -1696,9 +2139,9 @@ function drawTile(x,y,t){
       ctx.fillStyle='#b08f56';
       for(let i=0;i<3;i++) ctx.fillRect(px+4+i*9, py+4+((i%2)*10), 4,4);
     }
-    // flashing directional chevrons only (no tinted box)
-    const flashA = 0.55 + 0.45*Math.sin(animTimer*0.12);
-    ctx.strokeStyle=`rgba(255,235,150,${flashA.toFixed(2)})`;
+    // single softly-shimmering chevron matching the interior castle exits
+    const shineA = 0.4 + 0.3*Math.sin(animTimer*0.06);
+    ctx.strokeStyle=`rgba(255,235,150,${shineA.toFixed(2)})`;
     ctx.lineWidth=2;
     // determine which edge this exit points toward
     let axis, dir;
@@ -1707,24 +2150,19 @@ function drawTile(x,y,t){
     else if(x<=0){ axis='h'; dir=-1; }       // left edge → left
     else if(x>=COLS-1){ axis='h'; dir=1; }   // right edge → right
     else { axis='h'; dir=(x<COLS/2)?-1:1; }  // interior fallback → outward
-    const anim = (animTimer*0.4)%7;
-    for(let i=0;i<2;i++){
-      if(axis==='h'){
-        const cxx = px+16 + dir*(i*7 - 3) + dir*anim;
-        ctx.beginPath();
-        ctx.moveTo(cxx - dir*4, py+10);
-        ctx.lineTo(cxx + dir*2, py+16);
-        ctx.lineTo(cxx - dir*4, py+22);
-        ctx.stroke();
-      } else {
-        const cyy = py+16 + dir*(i*7 - 3) + dir*anim;
-        ctx.beginPath();
-        ctx.moveTo(px+10, cyy - dir*4);
-        ctx.lineTo(px+16, cyy + dir*2);
-        ctx.lineTo(px+22, cyy - dir*4);
-        ctx.stroke();
-      }
+    ctx.beginPath();
+    if(axis==='v'){
+      // vertical chevron: dir=1 points down (V), dir=-1 points up (^)
+      ctx.moveTo(px+11, py+16 - dir*4);
+      ctx.lineTo(px+16, py+16 + dir*4);
+      ctx.lineTo(px+21, py+16 - dir*4);
+    } else {
+      // horizontal chevron: dir=1 points right (>), dir=-1 points left (<)
+      ctx.moveTo(px+16 - dir*4, py+11);
+      ctx.lineTo(px+16 + dir*4, py+16);
+      ctx.lineTo(px+16 - dir*4, py+21);
     }
+    ctx.stroke();
     ctx.lineWidth=1;
   } else if(t===14){ // desert obstacle — cactus or boulder
     const seed = (x*7 + y*11) % 4;
@@ -1776,6 +2214,51 @@ function drawTile(x,y,t){
     ctx.fillRect(px+20-(seed%4)*2, py+6+(seed%4), 2, 2);
     ctx.fillStyle='#efd79a';
     ctx.fillRect(px+14+(seed%3)*2, py+14+(seed%2)*4, 1.6, 1.6);
+  } else if(t===19 && (player.zone==='hall' || player.zone==='throne')){ // castle exit — full red carpet with a downward chevron
+    // stone floor base underneath (matches hall floor edges)
+    ctx.fillStyle='#b8b4c0';
+    ctx.fillRect(px,py,TS,TS);
+    // red carpet body to match the runner above
+    ctx.fillStyle='#8f2b2b';
+    ctx.fillRect(px, py, TS, TS);
+    ctx.fillStyle='#7c2323';
+    for(let i=0;i<4;i++) ctx.fillRect(px, py+i*8+3, TS, 1);
+    // gold edge trim only where the carpet ends (auto-detect neighbors)
+    ctx.fillStyle='#d8b45a';
+    if(tileAt(x-1,y)!==34 && tileAt(x-1,y)!==19) ctx.fillRect(px+2, py, 2, TS);
+    if(tileAt(x+1,y)!==34 && tileAt(x+1,y)!==19) ctx.fillRect(px+TS-4, py, 2, TS);
+    // chevron exit hint — points toward whichever edge the rug sits on
+    const shineA = 0.4 + 0.3*Math.sin(animTimer*0.06);
+    ctx.strokeStyle=`rgba(255,235,150,${shineA.toFixed(2)})`;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    if(y<=1){ // north exit → point up
+      ctx.moveTo(px+11, py+21);
+      ctx.lineTo(px+16, py+13);
+      ctx.lineTo(px+21, py+21);
+    } else { // south exit → point down
+      ctx.moveTo(px+11, py+13);
+      ctx.lineTo(px+16, py+21);
+      ctx.lineTo(px+21, py+13);
+    }
+    ctx.stroke();
+    ctx.lineWidth=1;
+  } else if(t===19 && player.zone==='garrison'){ // garrison exit — stone floor with a downward chevron
+    ctx.fillStyle='#c4c4cc'; // matches garrison floor (tile 31)
+    ctx.fillRect(px,py,TS,TS);
+    ctx.strokeStyle='#b2b2ba';
+    ctx.lineWidth=1;
+    ctx.strokeRect(px+0.5, py+0.5, TS-1, TS-1);
+    // downward chevron exit hint
+    const gShine = 0.4 + 0.3*Math.sin(animTimer*0.06);
+    ctx.strokeStyle=`rgba(255,235,150,${gShine.toFixed(2)})`;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(px+11, py+13);
+    ctx.lineTo(px+16, py+21);
+    ctx.lineTo(px+21, py+13);
+    ctx.stroke();
+    ctx.lineWidth=1;
   } else if(t===16 || t===19 || t===20 || t===24){ // interior wood floor (base for rug/bed/table too)
     ctx.fillStyle='#9a6a38';
     ctx.fillRect(px,py,TS,TS);
@@ -2087,14 +2570,16 @@ function drawTile(x,y,t){
     ctx.arc(px+22, py+21, 1.8, 0, Math.PI*2);
     ctx.fill();
   }
-  if(t===8){ // boss door — skull symbol, blended into the castle stone
-    // stone texture continuity around the door
+  if(t===8){ // garrison door — charred, battle-scarred wooden door
+    // stone wall base (matches the tile-5 castle wall render color)
+    ctx.fillStyle='#4a4a52';
+    ctx.fillRect(px,py,TS,TS);
     ctx.strokeStyle='#2e2e36';
     ctx.lineWidth=1;
     ctx.beginPath();
     ctx.moveTo(px, py+TS/2); ctx.lineTo(px+TS, py+TS/2);
     ctx.stroke();
-    // stone frame
+    // arched stone frame
     ctx.fillStyle='#3a3a44';
     ctx.beginPath();
     ctx.moveTo(px+4, py+TS);
@@ -2103,8 +2588,8 @@ function drawTile(x,y,t){
     ctx.lineTo(px+28, py+TS);
     ctx.closePath();
     ctx.fill();
-    // dark-red door recess
-    ctx.fillStyle='#4a0f0f';
+    // burnt wooden door — dark charred base
+    ctx.fillStyle='#2a1a10';
     ctx.beginPath();
     ctx.moveTo(px+6, py+TS);
     ctx.lineTo(px+6, py+12);
@@ -2112,38 +2597,30 @@ function drawTile(x,y,t){
     ctx.lineTo(px+26, py+TS);
     ctx.closePath();
     ctx.fill();
-    const glow = (animTimer%30<15)?'#f5f5f5':'#c9a0a0';
-    // cranium
-    ctx.fillStyle=glow;
+    // vertical plank seams
+    ctx.strokeStyle='#160d07';
+    ctx.lineWidth=1;
     ctx.beginPath();
-    ctx.arc(px+16,py+13,8,Math.PI,0);
-    ctx.lineTo(px+22,py+18);
-    ctx.quadraticCurveTo(px+22,py+21,px+19,py+21);
-    ctx.lineTo(px+19,py+18);
-    ctx.lineTo(px+17,py+18);
-    ctx.lineTo(px+17,py+21);
-    ctx.lineTo(px+15,py+21);
-    ctx.lineTo(px+15,py+18);
-    ctx.lineTo(px+13,py+18);
-    ctx.lineTo(px+13,py+21);
-    ctx.quadraticCurveTo(px+10,py+21,px+10,py+18);
-    ctx.closePath();
-    ctx.fill();
-    // eye sockets
-    ctx.fillStyle='#4a0f0f';
-    ctx.beginPath();
-    ctx.arc(px+13,py+13,2.2,0,Math.PI*2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(px+19,py+13,2.2,0,Math.PI*2);
-    ctx.fill();
-    // nose
-    ctx.beginPath();
-    ctx.moveTo(px+16,py+15);
-    ctx.lineTo(px+14.5,py+17.5);
-    ctx.lineTo(px+17.5,py+17.5);
-    ctx.closePath();
-    ctx.fill();
+    ctx.moveTo(px+12, py+13); ctx.lineTo(px+12, py+TS);
+    ctx.moveTo(px+16, py+7);  ctx.lineTo(px+16, py+TS);
+    ctx.moveTo(px+20, py+13); ctx.lineTo(px+20, py+TS);
+    ctx.stroke();
+    // charred/scorched patches (uneven burn marks)
+    ctx.fillStyle='#0f0906';
+    ctx.beginPath(); ctx.ellipse(px+11, py+20, 3, 5, 0.3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(px+21, py+25, 2.5, 4, -0.4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(px+16, py+15, 2, 3, 0, 0, Math.PI*2); ctx.fill();
+    // faint ember glow at the base of a burn
+    const ember = (animTimer%40<20) ? 0.25 : 0.12;
+    ctx.fillStyle=`rgba(200,80,20,${ember})`;
+    ctx.fillRect(px+10, py+22, 3, 4);
+    // iron door bands
+    ctx.fillStyle='#1a1a1e';
+    ctx.fillRect(px+7, py+16, 18, 2);
+    ctx.fillRect(px+7, py+25, 18, 2);
+    // rusted handle
+    ctx.fillStyle='#6b5030';
+    ctx.beginPath(); ctx.arc(px+22, py+21, 1.6, 0, Math.PI*2); ctx.fill();
   }
 }
 
@@ -2590,6 +3067,146 @@ function drawPathConnector(){
   }
 }
 
+function drawCropOnPlot(px, py, stage){
+  const cx = px + 16;
+  if(stage<=0){
+    // freshly planted: a small mound of soil with a seed poking out
+    ctx.fillStyle='#5a3c22';
+    ctx.beginPath(); ctx.ellipse(cx, py+22, 6, 3, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#d9c48a';
+    ctx.fillRect(cx-1, py+19, 2, 2);
+    return;
+  }
+  if(stage===1){
+    // seedling: a short stem with two tiny leaves
+    ctx.strokeStyle='#3a8f3e'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(cx, py+24); ctx.lineTo(cx, py+16); ctx.stroke();
+    ctx.fillStyle='#4fae52';
+    ctx.beginPath(); ctx.ellipse(cx-3, py+17, 3, 1.6, -0.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx+3, py+16, 3, 1.6, 0.5, 0, Math.PI*2); ctx.fill();
+    ctx.lineWidth=1;
+    return;
+  }
+  if(stage===2){
+    // half-grown: a small leafy bunch forming
+    ctx.fillStyle='#3a8f3e';
+    ctx.beginPath(); ctx.ellipse(cx, py+19, 7, 5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#4fae52';
+    ctx.beginPath(); ctx.ellipse(cx-2, py+18, 4, 3, -0.3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx+3, py+19, 3.5, 2.6, 0.4, 0, Math.PI*2); ctx.fill();
+    return;
+  }
+  // stage 3 — fully grown cabbage: round layered head of leaves
+  // outer leaves
+  ctx.fillStyle='#2f7a34';
+  ctx.beginPath(); ctx.arc(cx, py+18, 10, 0, Math.PI*2); ctx.fill();
+  // leaf lobes around the edge
+  ctx.fillStyle='#3a8f3e';
+  for(let a=0;a<6;a++){
+    const ang = a/6*Math.PI*2;
+    ctx.beginPath();
+    ctx.ellipse(cx+Math.cos(ang)*7, py+18+Math.sin(ang)*6, 4, 3, ang, 0, Math.PI*2);
+    ctx.fill();
+  }
+  // pale head
+  ctx.fillStyle='#7bbf4a';
+  ctx.beginPath(); ctx.arc(cx, py+18, 5.5, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle='#9ed86a';
+  ctx.beginPath(); ctx.arc(cx-1.5, py+16.5, 2.4, 0, Math.PI*2); ctx.fill();
+  // vein lines
+  ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.moveTo(cx, py+13); ctx.lineTo(cx, py+22);
+  ctx.moveTo(cx-4, py+18); ctx.lineTo(cx+4, py+18); ctx.stroke();
+  ctx.lineWidth=1;
+  // little "ready" sparkle
+  const sp = (Math.floor(animTimer/20)%2)===0;
+  if(sp){
+    ctx.fillStyle='#fff4c2';
+    ctx.fillRect(cx+7, py+9, 2, 2);
+  }
+}
+
+function drawBarn(){
+  // footprint cols 1-4, rows 3-6 → pixel bounds
+  const bx = 1*TS, by = 3*TS;
+  const bw = 4*TS, bh = 4*TS;
+  const barnRed = '#a83232', barnDk = '#7c2323', roofGry = '#6e6e78', roofDk = '#565660';
+  const trim = '#f0e8dc', wood = '#5e3a1a';
+  // ground shadow
+  ctx.fillStyle='rgba(0,0,0,0.20)';
+  ctx.beginPath();
+  ctx.ellipse(bx+bw/2, by+bh-6, bw*0.52, 10, 0, 0, Math.PI*2);
+  ctx.fill();
+  // ---- barn body ----
+  const bodyTop = by + 40;
+  ctx.fillStyle=barnRed;
+  ctx.fillRect(bx+8, bodyTop, bw-16, bh-46);
+  // darker right side for depth
+  ctx.fillStyle=barnDk;
+  ctx.fillRect(bx+bw-24, bodyTop, 16, bh-46);
+  // white corner trim
+  ctx.fillStyle=trim;
+  ctx.fillRect(bx+8, bodyTop, 4, bh-46);
+  ctx.fillRect(bx+bw-12, bodyTop, 4, bh-46);
+  // ---- gambrel (barn) roof ----
+  const mx = bx+bw/2;
+  ctx.fillStyle=roofGry;
+  ctx.beginPath();
+  ctx.moveTo(bx+4, bodyTop+4);        // left eave
+  ctx.lineTo(bx+22, by+18);           // lower-left break
+  ctx.lineTo(mx, by+4);               // peak
+  ctx.lineTo(bx+bw-22, by+18);        // lower-right break
+  ctx.lineTo(bx+bw-4, bodyTop+4);     // right eave
+  ctx.lineTo(bx+bw-14, bodyTop+4);
+  ctx.lineTo(mx, by+16);
+  ctx.lineTo(bx+14, bodyTop+4);
+  ctx.closePath();
+  ctx.fill();
+  // roof shading (right slope)
+  ctx.fillStyle=roofDk;
+  ctx.beginPath();
+  ctx.moveTo(mx, by+4);
+  ctx.lineTo(bx+bw-22, by+18);
+  ctx.lineTo(bx+bw-4, bodyTop+4);
+  ctx.lineTo(bx+bw-14, bodyTop+4);
+  ctx.lineTo(mx, by+16);
+  ctx.closePath();
+  ctx.fill();
+  // ---- hayloft door + pulley at the peak ----
+  ctx.fillStyle=wood;
+  ctx.fillRect(mx-7, bodyTop+2, 14, 12);
+  ctx.strokeStyle='#3a2410';
+  ctx.strokeRect(mx-7, bodyTop+2, 14, 12);
+  ctx.beginPath(); ctx.moveTo(mx, bodyTop+2); ctx.lineTo(mx, bodyTop+14); ctx.stroke();
+  ctx.strokeStyle='#3a2410'; // pulley beam
+  ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(mx, by+16); ctx.lineTo(mx, bodyTop); ctx.stroke();
+  ctx.lineWidth=1;
+  // ---- big double barn doors (white X-braced) — wide and short ----
+  const doorW = 44, doorH = 46, doorX = mx-doorW/2, doorY = (bodyTop) + (bh-46) - doorH;
+  ctx.fillStyle=trim;
+  ctx.fillRect(doorX, doorY, doorW, doorH);
+  ctx.fillStyle=barnDk;
+  ctx.fillRect(doorX+2, doorY+2, doorW-4, doorH-4);
+  ctx.strokeStyle=trim;
+  ctx.lineWidth=2;
+  // center split
+  ctx.beginPath(); ctx.moveTo(mx, doorY+2); ctx.lineTo(mx, doorY+doorH-2); ctx.stroke();
+  // X-braces on each door leaf
+  ctx.beginPath();
+  ctx.moveTo(doorX+2, doorY+2); ctx.lineTo(mx-2, doorY+doorH-2);
+  ctx.moveTo(mx-2, doorY+2); ctx.lineTo(doorX+2, doorY+doorH-2);
+  ctx.moveTo(mx+2, doorY+2); ctx.lineTo(doorX+doorW-2, doorY+doorH-2);
+  ctx.moveTo(doorX+doorW-2, doorY+2); ctx.lineTo(mx+2, doorY+doorH-2);
+  ctx.stroke();
+  ctx.lineWidth=1;
+  // small round window in the gable
+  ctx.fillStyle=trim;
+  ctx.beginPath(); ctx.arc(mx, by+22, 4, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle='#2a2410';
+  ctx.beginPath(); ctx.arc(mx, by+22, 2.5, 0, Math.PI*2); ctx.fill();
+}
+
 function drawCitadelCastle(){
   // footprint: columns 4..15 (x px 128..512), rows 1..4 (y px 32..160)
   const L = 4*TS, R = 16*TS;      // 128 .. 512
@@ -2728,6 +3345,465 @@ function drawCitadelCastle(){
   for(let i=1;i<4;i++){ ctx.beginPath(); ctx.moveTo(gateX-gateW/2+i*11, gateTop); ctx.lineTo(gateX-gateW/2+i*11, gateTop+8); ctx.stroke(); }
 }
 
+function drawMilkmaidAtInn(){
+  const px = MILKMAID_INN.x*TS, py = MILKMAID_INN.y*TS;
+  const bob = (animTimer%84<42)?0:1;
+  ctx.fillStyle='#f4c98a'; // skin
+  ctx.fillRect(px+11, py+4+bob, 10, 8);
+  ctx.fillStyle='#e0b84c'; // hair
+  ctx.fillRect(px+10, py+2+bob, 12, 4);
+  ctx.fillStyle='#f0ece2'; // kerchief
+  ctx.fillRect(px+10, py+1+bob, 12, 2);
+  ctx.fillStyle='#c76b98'; // dress
+  ctx.fillRect(px+8, py+12+bob, 16, 12);
+  ctx.fillStyle='#f0ece2'; // apron
+  ctx.fillRect(px+11, py+14+bob, 10, 10);
+  ctx.fillStyle='#e0d8c8';
+  ctx.fillRect(px+11, py+14+bob, 10, 1);
+  ctx.fillStyle='#8a5a2c'; // legs
+  ctx.fillRect(px+9, py+24+bob, 6, 6);
+  ctx.fillRect(px+17, py+24+bob, 6, 6);
+  // turn-in marker: bobbing yellow "?" over her head while the quest is active
+  if(player.milkQuest==='active'){
+    const mbob = Math.round(Math.sin(animTimer*0.12)*2);
+    const mkx = px+16, mky = py-16+mbob;
+    ctx.fillStyle='rgba(0,0,0,0.5)'; // outline hugging the shape
+    ctx.fillRect(mkx-4, mky-1, 8, 3);     // top bar outline
+    ctx.fillRect(mkx, mky-1, 4, 6);       // right down-stroke outline
+    ctx.fillRect(mkx-2, mky+3, 6, 4);     // hook outline
+    ctx.fillRect(mkx-2, mky+5, 4, 4);     // stem outline
+    ctx.fillRect(mkx-2, mky+9, 4, 4);     // dot outline
+    ctx.fillStyle='#ffd54a'; // yellow question mark
+    ctx.fillRect(mkx-3, mky, 6, 2);       // top bar
+    ctx.fillRect(mkx+1, mky, 2, 4);       // right down-stroke
+    ctx.fillRect(mkx-1, mky+4, 4, 2);     // hook into center
+    ctx.fillRect(mkx-1, mky+6, 2, 2);     // stem
+    ctx.fillRect(mkx-1, mky+10, 2, 2);    // dot
+    ctx.fillStyle='#fff4c2'; // shine
+    ctx.fillRect(mkx-3, mky, 2, 2);
+  }
+}
+
+function captainPostDialog(){
+  state='dialog';
+  if(player.dragonQuest==='done'){
+    showDialogue(
+      `<b style="color:#c9d4ff">CAPTAIN OF THE GUARD</b><br>The Green Dragon slain! You have done the realm a great service. The King will remember this.`,
+      {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+    );
+  } else if(player.dragonQuest==='active'){
+    showDialogue(
+      `<b style="color:#c9d4ff">CAPTAIN OF THE GUARD</b><br>The beast still holds the Garrison in the Outskirts. Steel yourself and strike it down.`,
+      {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+    );
+  } else {
+    // player declined earlier — let them accept now
+    showDialogue(
+      `<b style="color:#c9d4ff">CAPTAIN OF THE GUARD</b><br>Have you found your courage? The King still needs the Green Dragon slain. Will you take up the charge?`,
+      {buttons:[
+        {label:'I ACCEPT', action:()=>{
+          player.dragonQuest='active';
+          updateStatBar();
+          showDialogue(
+            `<b style="color:#c9d4ff">CAPTAIN OF THE GUARD</b><br>Well spoken! I'll muster my men. Meet me <b>outside the Garrison</b> in the Outskirts.<br><span style="color:var(--gold)">Quest started: Meet the Captain outside the Garrison.</span>`,
+            {buttons:[{label:'ONWARD', action:()=>{
+              hideDialogue(); state='overworld';
+              captainPos = {x:CAPTAIN_POST.x, y:CAPTAIN_POST.y};
+              captainAtPost = false;
+              startCaptainExitFromPost();
+            }}]}
+          );
+        }},
+        {label:'NOT YET', action:()=>{ hideDialogue(); state='overworld'; }}
+      ]}
+    );
+  }
+}
+function drawCaptain(){
+  let cx, cy, walking=false;
+  if(captainWalk){
+    // interpolate down the carpet as he approaches, but never past the target tile
+    const t = Math.min(1, captainWalk.timer/22);
+    cx = 9;
+    cy = (captainWalk.y < captainWalk.target) ? captainWalk.y + t : captainWalk.target;
+    walking = (captainWalk.y < captainWalk.target);
+  } else if(captainReturn){
+    // interpolate along his path to the post
+    const from = captainPos;
+    const to = captainReturn.path[captainReturn.idx] || captainPos;
+    const t = Math.min(1, captainReturn.timer/12);
+    cx = from.x + (to.x-from.x)*t;
+    cy = from.y + (to.y-from.y)*t;
+    walking = true;
+  } else if(captainPos){
+    cx = captainPos.x; cy = captainPos.y; // holding in front of the player during dialogue
+  } else if(captainAtPost){
+    cx = CAPTAIN_POST.x; cy = CAPTAIN_POST.y;
+  } else return;
+  const px = cx*TS, py = cy*TS;
+  const step = walking && (Math.floor(animTimer/8)%2)===0;
+  drawGuardSprite(px, py, {captain:true, step, marker: player.dragonQuest==='none'});
+}
+function drawGuardSprite(px, py, opts){
+  opts = opts || {};
+  const captain = !!opts.captain;
+  const step = !!opts.step;
+  const bob = step?0:1;
+  // shadow
+  ctx.fillStyle='rgba(0,0,0,0.2)';
+  ctx.beginPath(); ctx.ellipse(px+16, py+28, 9, 3, 0, 0, Math.PI*2); ctx.fill();
+  // legs
+  ctx.fillStyle='#3a3a48';
+  ctx.fillRect(px+9,  py+24+(step?0:1), 6, 6);
+  ctx.fillRect(px+17, py+24+(step?1:0), 6, 6);
+  // armored body
+  ctx.fillStyle = captain ? '#6b7a99' : '#5a6472';
+  ctx.fillRect(px+8, py+12+bob, 16, 13);
+  ctx.fillStyle = captain ? '#8a99b8' : '#727d8c';
+  ctx.fillRect(px+11, py+14+bob, 10, 8);
+  // sash (captain only)
+  if(captain){ ctx.fillStyle='#b03040'; ctx.fillRect(px+8, py+13+bob, 16, 2); }
+  // face
+  ctx.fillStyle='#f4c98a';
+  ctx.fillRect(px+11, py+5+bob, 10, 8);
+  ctx.fillStyle='#5a4a38'; // brow/beard
+  ctx.fillRect(px+11, py+11+bob, 10, 2);
+  // helmet
+  ctx.fillStyle = captain ? '#9aa8c4' : '#828c9a';
+  ctx.fillRect(px+10, py+2+bob, 12, 5);
+  ctx.fillStyle = captain ? '#c0ccdd' : '#9aa4b2';
+  ctx.fillRect(px+10, py+2+bob, 12, 2);
+  if(captain){ ctx.fillStyle='#c22'; ctx.fillRect(px+14, py-2+bob, 4, 5); } // red plume
+  if(captain){
+    // shield on his left arm
+    ctx.fillStyle='#8a5a2c'; // wooden backing
+    ctx.beginPath();
+    ctx.moveTo(px+4, py+13+bob);
+    ctx.lineTo(px+11, py+13+bob);
+    ctx.lineTo(px+11, py+22+bob);
+    ctx.lineTo(px+7.5, py+26+bob);
+    ctx.lineTo(px+4, py+22+bob);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#c0ccdd'; // metal rim
+    ctx.lineWidth=1;
+    ctx.strokeStyle='#c0ccdd';
+    ctx.beginPath();
+    ctx.moveTo(px+4, py+13+bob);
+    ctx.lineTo(px+11, py+13+bob);
+    ctx.lineTo(px+11, py+22+bob);
+    ctx.lineTo(px+7.5, py+26+bob);
+    ctx.lineTo(px+4, py+22+bob);
+    ctx.closePath(); ctx.stroke();
+    ctx.fillStyle='#ffd54a'; // gold boss/emblem
+    ctx.beginPath(); ctx.arc(px+7.5, py+18+bob, 2, 0, Math.PI*2); ctx.fill();
+    // sword held at his side, pointing down
+    ctx.strokeStyle='#d8dde5'; // blade
+    ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.moveTo(px+26, py+14+bob); ctx.lineTo(px+26, py+30+bob); ctx.stroke();
+    ctx.fillStyle='#ffe89a'; // blade tip glint
+    ctx.beginPath(); ctx.moveTo(px+26, py+32+bob); ctx.lineTo(px+24.5, py+29+bob); ctx.lineTo(px+27.5, py+29+bob); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='#6b4420'; // crossguard
+    ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(px+23, py+14+bob); ctx.lineTo(px+29, py+14+bob); ctx.stroke();
+    ctx.fillStyle='#6b4420'; // grip
+    ctx.fillRect(px+25, py+9+bob, 2, 5);
+    ctx.lineWidth=1;
+  } else {
+    // guards keep their spears
+    ctx.strokeStyle='#6b4420';
+    ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(px+25, py+2+bob); ctx.lineTo(px+25, py+28+bob); ctx.stroke();
+    ctx.fillStyle='#cfd6e0';
+    ctx.beginPath(); ctx.moveTo(px+25, py-2+bob); ctx.lineTo(px+22, py+4+bob); ctx.lineTo(px+28, py+4+bob); ctx.closePath(); ctx.fill();
+    ctx.lineWidth=1;
+  }
+  // quest-available marker: bobbing yellow "!" over his head
+  if(opts.marker){
+    const mbob = Math.round(Math.sin(animTimer*0.12)*2);
+    const mkx = px+16, mky = py-16+mbob;
+    ctx.fillStyle='rgba(0,0,0,0.5)'; // outline
+    ctx.fillRect(mkx-2, mky-1, 4, 9);
+    ctx.fillRect(mkx-2, mky+9, 4, 4);
+    ctx.fillStyle='#ffd54a'; // yellow stem + dot
+    ctx.fillRect(mkx-1, mky, 2, 7);
+    ctx.fillRect(mkx-1, mky+9, 2, 3);
+    ctx.fillStyle='#fff4c2'; // shine
+    ctx.fillRect(mkx-1, mky, 1, 3);
+  }
+}
+// the captain and guards charge into the garrison, then the player is told to follow
+function unitPathToDoor(start){
+  // move horizontally to column 16, then up to the door at row 3
+  const path=[]; let {x,y}=start;
+  while(x<16){ x++; path.push({x,y}); }
+  while(x>16){ x--; path.push({x,y}); }
+  while(y>3){ y--; path.push({x,y}); }
+  return path;
+}
+function startMusterCharge(){
+  state='cutscene';
+  musterCharge = {
+    timer:0,
+    units:[
+      {pos:{...CAPTAIN_MUSTER}, path:unitPathToDoor(CAPTAIN_MUSTER), idx:0, captain:true, done:false, delay:0},
+      {pos:{...MUSTER_GUARDS[0]}, path:unitPathToDoor(MUSTER_GUARDS[0]), idx:0, captain:false, done:false, delay:8},
+      {pos:{...MUSTER_GUARDS[1]}, path:unitPathToDoor(MUSTER_GUARDS[1]), idx:0, captain:false, done:false, delay:16},
+    ],
+    startedAt:animTimer
+  };
+}
+function updateMusterCharge(){
+  if(!musterCharge) return;
+  musterCharge.timer++;
+  const STEP = 16;
+  let allDone = true;
+  musterCharge.units.forEach(u=>{
+    if(u.done) return;
+    allDone = false;
+    // stagger the start so they file in one after another
+    if((animTimer - musterCharge.startedAt) < u.delay) return;
+    if(musterCharge.timer % STEP !== 0) return;
+    if(u.idx < u.path.length){
+      u.pos = u.path[u.idx];
+      u.idx++;
+    } else {
+      u.done = true; // reached the door and entered
+    }
+  });
+  if(allDone){
+    musterCharge = null;
+    player.captainCharged = true;
+    persistSave();
+    // prompt the player to follow them in
+    state='dialog';
+    showDialogue(
+      `<b style="color:var(--gold)">The Captain and his guards charge into the Garrison!</b><br>Steel yourself and follow them in.`,
+      {center:true, buttons:[{label:'FOLLOW', action:()=>{ hideDialogue(); state='overworld'; }}]}
+    );
+  }
+}
+function drawMusterCharge(){
+  if(!musterCharge) return;
+  musterCharge.units.forEach(u=>{
+    if(u.done) return;
+    if((animTimer - musterCharge.startedAt) < u.delay) { drawGuardSprite(u.pos.x*TS, u.pos.y*TS, {captain:u.captain, step:false}); return; }
+    // interpolate toward the next path node
+    const from = u.pos;
+    const to = u.path[u.idx] || u.pos;
+    const t = Math.min(1, (musterCharge.timer % 16)/16);
+    const fx = from.x + (to.x-from.x)*t;
+    const fy = from.y + (to.y-from.y)*t;
+    const step = (Math.floor(animTimer/6)%2)===0;
+    drawGuardSprite(fx*TS, fy*TS, {captain:u.captain, step});
+  });
+}
+
+function drawGarrisonMuster(){
+  // two guards flanking the captain outside the garrison
+  MUSTER_GUARDS.forEach((gd,i)=>{
+    const gb = ((animTimer + i*33) % 90 < 45);
+    drawGuardSprite(gd.x*TS, gd.y*TS, {captain:false, step:false});
+  });
+  drawGuardSprite(CAPTAIN_MUSTER.x*TS, CAPTAIN_MUSTER.y*TS, {captain:true, step:false});
+}
+
+function captainRemainsDialog(){
+  state='dialog';
+  if(!player.captainRemainsFound){
+    // first examination — the grim discovery
+    player.captainRemainsFound = true;
+    if(player.dragonQuest==='active') player.dragonQuest='done';
+    player.avengeQuest = 'active';
+    updateStatBar();
+    showDialogue(
+      `<b style="color:#c9d4ff">THE CAPTAIN'S REMAINS</b><br>Amid the shattered armor of his guards lies the Captain, his plumed helm resting atop the bones. The dragon was too strong — they never stood a chance.<br>You close his visor with a heavy hand.<br><span style="color:var(--gold)">Quest complete: Meet the Captain.</span><br><span style="color:var(--gold)">New quest: Avenge the Captain — slay the dragon, then bring word to the King.</span>`,
+      {center:true, buttons:[{label:'I WILL AVENGE HIM', action:()=>{ hideDialogue(); state='overworld'; }}]}
+    );
+  } else if(player.avengeQuest==='active'){
+    const line = player.bossDefeated
+      ? `The Captain is avenged. Report his fate to the King.`
+      : `The dragon still draws breath. Avenge the Captain and his men.`;
+    showDialogue(
+      `<b style="color:#c9d4ff">THE CAPTAIN'S REMAINS</b><br>${line}`,
+      {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+    );
+  } else {
+    showDialogue(
+      `<b style="color:#c9d4ff">THE CAPTAIN'S REMAINS</b><br>Rest now, brave Captain. Your charge is answered.`,
+      {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+    );
+  }
+}
+function drawCaptainRemains(){
+  const px = CAPTAIN_REMAINS.x*TS, py = CAPTAIN_REMAINS.y*TS;
+  // scattered bones
+  ctx.strokeStyle='#e8e4d8';
+  ctx.lineWidth=2;
+  ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(px+6, py+24); ctx.lineTo(px+18, py+18);
+  ctx.moveTo(px+10, py+20); ctx.lineTo(px+24, py+25);
+  ctx.moveTo(px+8, py+16); ctx.lineTo(px+16, py+26);
+  ctx.stroke();
+  ctx.lineCap='butt';
+  ctx.fillStyle='#f0ece0';
+  [[6,24],[18,18],[24,25],[8,16]].forEach(([bx,by])=>{ ctx.beginPath(); ctx.arc(px+bx,py+by,1.7,0,Math.PI*2); ctx.fill(); });
+  // a broken sword stuck in the ground
+  ctx.strokeStyle='#9aa4b2';
+  ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(px+22, py+22); ctx.lineTo(px+26, py+10); ctx.stroke();
+  ctx.fillStyle='#6b4420';
+  ctx.fillRect(px+20, py+21, 4, 2); // hilt
+  ctx.lineWidth=1;
+  // his plumed helmet resting atop the bones
+  const hx = px+13, hy = py+12;
+  ctx.fillStyle='#9aa8c4';
+  ctx.beginPath(); ctx.arc(hx, hy, 6, Math.PI, 0); ctx.fill();
+  ctx.fillRect(hx-6, hy, 12, 4);
+  ctx.fillStyle='#c0ccdd';
+  ctx.fillRect(hx-6, hy-1, 12, 2);
+  ctx.fillStyle='#3a3a44'; // visor slit
+  ctx.fillRect(hx-4, hy+1, 8, 2);
+  ctx.fillStyle='#a02020'; // faded red plume
+  ctx.fillRect(hx-2, hy-8, 4, 7);
+  // turn-in marker: bobbing yellow "?" until the remains are examined
+  if(!player.captainRemainsFound){
+    const mbob = Math.round(Math.sin(animTimer*0.12)*2);
+    const mkx = px+16, mky = py-14+mbob;
+    ctx.fillStyle='rgba(0,0,0,0.5)';
+    ctx.fillRect(mkx-4, mky-1, 8, 3);
+    ctx.fillRect(mkx, mky-1, 4, 6);
+    ctx.fillRect(mkx-2, mky+3, 6, 4);
+    ctx.fillRect(mkx-2, mky+5, 4, 4);
+    ctx.fillRect(mkx-2, mky+9, 4, 4);
+    ctx.fillStyle='#ffd54a';
+    ctx.fillRect(mkx-3, mky, 6, 2);
+    ctx.fillRect(mkx+1, mky, 2, 4);
+    ctx.fillRect(mkx-1, mky+4, 4, 2);
+    ctx.fillRect(mkx-1, mky+6, 2, 2);
+    ctx.fillRect(mkx-1, mky+10, 2, 2);
+    ctx.fillStyle='#fff4c2';
+    ctx.fillRect(mkx-3, mky, 2, 2);
+  }
+}
+
+function drawGarrisonDragon(){
+  // occupies a 3x3 area, nudged right so it reads a tile wider on the right side
+  const cx = (GARRISON_DRAGON.x+1)*TS;
+  const cy = (GARRISON_DRAGON.y+0.5)*TS;
+  const breathe = Math.sin(animTimer*0.04)*2;
+  const s = 40;
+  // shadow
+  ctx.fillStyle='rgba(0,0,0,0.28)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy+s*0.55, s*0.8, s*0.22, 0, 0, Math.PI*2);
+  ctx.fill();
+  // wings (dark green) spread behind
+  ctx.fillStyle='#1e5c12';
+  ctx.beginPath();
+  ctx.moveTo(cx-s*0.5, cy-s*0.1+breathe);
+  ctx.lineTo(cx-s*1.15, cy-s*0.7+breathe);
+  ctx.lineTo(cx-s*0.9, cy-s*0.1+breathe);
+  ctx.lineTo(cx-s*1.1, cy+s*0.2+breathe);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx+s*0.5, cy-s*0.1+breathe);
+  ctx.lineTo(cx+s*1.15, cy-s*0.7+breathe);
+  ctx.lineTo(cx+s*0.9, cy-s*0.1+breathe);
+  ctx.lineTo(cx+s*1.1, cy+s*0.2+breathe);
+  ctx.closePath(); ctx.fill();
+  // body
+  ctx.fillStyle='#3a9d23';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy+breathe, s*0.62, s*0.5, 0, 0, Math.PI*2);
+  ctx.fill();
+  // belly highlight
+  ctx.fillStyle='#4fb82f';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy+s*0.15+breathe, s*0.4, s*0.3, 0, 0, Math.PI*2);
+  ctx.fill();
+  // neck + head raised
+  ctx.fillStyle='#3a9d23';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy-s*0.55+breathe, s*0.3, s*0.34, 0, 0, Math.PI*2);
+  ctx.fill();
+  // horns
+  ctx.fillStyle='#1e5c12';
+  ctx.beginPath(); ctx.moveTo(cx-s*0.2, cy-s*0.75+breathe); ctx.lineTo(cx-s*0.32, cy-s*1.0+breathe); ctx.lineTo(cx-s*0.08, cy-s*0.82+breathe); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(cx+s*0.2, cy-s*0.75+breathe); ctx.lineTo(cx+s*0.32, cy-s*1.0+breathe); ctx.lineTo(cx+s*0.08, cy-s*0.82+breathe); ctx.closePath(); ctx.fill();
+  // glowing red eyes
+  const glow = 0.6 + 0.4*Math.sin(animTimer*0.15);
+  ctx.fillStyle=`rgba(255,40,40,${glow.toFixed(2)})`;
+  ctx.fillRect(cx-s*0.16, cy-s*0.6+breathe, 5, 5);
+  ctx.fillRect(cx+s*0.06, cy-s*0.6+breathe, 5, 5);
+  // snout + smoke puffs
+  ctx.fillStyle='#2e7a1c';
+  ctx.fillRect(cx-s*0.1, cy-s*0.45+breathe, s*0.2, 5);
+}
+
+function drawThroneRoyals(){
+  THRONE_ROYALS.forEach((r,i)=>{
+    const px = r.x*TS, py = r.y*TS;
+    const bob = ((animTimer + i*40) % 120 < 60) ? 0 : 1;
+    const isKing = r.name==='King';
+    // seated body (sits a bit lower on the throne)
+    ctx.fillStyle='#f4c98a'; // face
+    ctx.fillRect(px+11, py+6+bob, 10, 8);
+    // hair / beard
+    if(isKing){
+      ctx.fillStyle='#8a8a8a'; // grey beard
+      ctx.fillRect(px+11, py+12+bob, 10, 4);
+      ctx.fillStyle='#9a9a9a';
+      ctx.fillRect(px+10, py+4+bob, 12, 4); // hair
+    } else {
+      ctx.fillStyle='#7a4a24'; // queen's hair, long
+      ctx.fillRect(px+9, py+4+bob, 14, 6);
+      ctx.fillRect(px+9, py+10+bob, 3, 6);
+      ctx.fillRect(px+20, py+10+bob, 3, 6);
+    }
+    // robe
+    ctx.fillStyle = isKing ? '#7c1f1f' : '#5a2a8f'; // king red, queen purple
+    ctx.fillRect(px+8, py+15+bob, 16, 13);
+    // ermine/gold trim
+    ctx.fillStyle = isKing ? '#ffd54a' : '#e8d8f0';
+    ctx.fillRect(px+8, py+15+bob, 16, 2);
+    ctx.fillRect(px+14, py+17+bob, 4, 11); // sash down the middle
+    // crown
+    ctx.fillStyle='#ffd54a';
+    ctx.fillRect(px+10, py+1+bob, 12, 4);
+    // crown points
+    ctx.fillRect(px+10, py-1+bob, 2, 3);
+    ctx.fillRect(px+15, py-1+bob, 2, 3);
+    ctx.fillRect(px+20, py-1+bob, 2, 3);
+    // jewel
+    ctx.fillStyle = isKing ? '#e23b3b' : '#4a7fd0';
+    ctx.fillRect(px+15, py+2+bob, 2, 2);
+    // turn-in marker over the King while the avenge quest awaits reporting
+    // grey while the dragon still lives, yellow once it's slain and ready to turn in
+    if(isKing && player.avengeQuest==='active'){
+      const ready = player.bossDefeated;
+      const markCol = ready ? '#ffd54a' : '#9aa0a8';
+      const shineCol = ready ? '#fff4c2' : '#c8ccd2';
+      const mbob = Math.round(Math.sin(animTimer*0.12)*2);
+      const mkx = px+16, mky = py-14+mbob;
+      ctx.fillStyle='rgba(0,0,0,0.5)';
+      ctx.fillRect(mkx-4, mky-1, 8, 3);
+      ctx.fillRect(mkx, mky-1, 4, 6);
+      ctx.fillRect(mkx-2, mky+3, 6, 4);
+      ctx.fillRect(mkx-2, mky+5, 4, 4);
+      ctx.fillRect(mkx-2, mky+9, 4, 4);
+      ctx.fillStyle=markCol;
+      ctx.fillRect(mkx-3, mky, 6, 2);
+      ctx.fillRect(mkx+1, mky, 2, 4);
+      ctx.fillRect(mkx-1, mky+4, 4, 2);
+      ctx.fillRect(mkx-1, mky+6, 2, 2);
+      ctx.fillRect(mkx-1, mky+10, 2, 2);
+      ctx.fillStyle=shineCol;
+      ctx.fillRect(mkx-3, mky, 2, 2);
+    }
+  });
+}
+
 function drawCommonsCows(){
   COMMONS_COWS.forEach((c,i)=>{
     const px = c.x*TS, py = c.y*TS;
@@ -2793,8 +3869,44 @@ function drawCommonsCows(){
   });
 }
 
+function drawFarmlandNpcs(){
+  FARMLAND_NPCS.forEach((n,i)=>{
+    const px = n.x*TS, py = n.y*TS;
+    const bob = ((animTimer + i*29) % 84 < 42) ? 0 : 1;
+    // shadow
+    ctx.fillStyle='rgba(0,0,0,0.18)';
+    ctx.beginPath(); ctx.ellipse(px+16, py+30, 9, 3, 0, 0, Math.PI*2); ctx.fill();
+    // skin
+    ctx.fillStyle='#e8b483';
+    ctx.fillRect(px+11, py+5+bob, 10, 8);
+    // simple beard
+    ctx.fillStyle='#8a7a5a';
+    ctx.fillRect(px+11, py+11+bob, 10, 2);
+    // tunic / overalls
+    ctx.fillStyle=n.tunic;
+    ctx.fillRect(px+8, py+12+bob, 16, 12);
+    // overall straps
+    ctx.fillStyle='#5a4326';
+    ctx.fillRect(px+11, py+12+bob, 2, 10);
+    ctx.fillRect(px+19, py+12+bob, 2, 10);
+    // legs
+    ctx.fillStyle='#5a3c22';
+    ctx.fillRect(px+9, py+24+bob, 6, 6);
+    ctx.fillRect(px+17, py+24+bob, 6, 6);
+    // straw hat (wide brim + crown)
+    ctx.fillStyle='#d9b96a';
+    ctx.beginPath(); ctx.ellipse(px+16, py+4+bob, 12, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#c9a94a';
+    ctx.fillRect(px+11, py-2+bob, 10, 5);
+    ctx.beginPath(); ctx.ellipse(px+16, py-2+bob, 5, 2.5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#a5863a'; // hat band
+    ctx.fillRect(px+11, py+2+bob, 10, 1);
+  });
+}
+
 function drawCommonsNpcs(){
   COMMONS_NPCS.forEach((n,i)=>{
+    if(n.name==='Milkmaid' && (milkmaidAtInn || milkmaidWalk || milkmaidReturnStage)) return; // at inn or mid-journey (drawn separately)
     const px = n.x*TS, py = n.y*TS;
     const bob = ((animTimer + i*29) % 84 < 42) ? 0 : 1;
     const short = n.name==='Child';
@@ -2805,10 +3917,77 @@ function drawCommonsNpcs(){
     ctx.fillRect(px+10, py+2+bob+yOff, 12, 4);
     ctx.fillStyle=n.tunic;
     ctx.fillRect(px+8, py+12+bob+yOff, 16, 12-yOff);
+    if(n.name==='Milkmaid'){
+      // white apron over the dress
+      ctx.fillStyle='#f0ece2';
+      ctx.fillRect(px+11, py+14+bob, 10, 10);
+      ctx.fillStyle='#e0d8c8';
+      ctx.fillRect(px+11, py+14+bob, 10, 1);
+      // hair bun / kerchief accent
+      ctx.fillStyle='#f0ece2';
+      ctx.fillRect(px+10, py+1+bob, 12, 2);
+    }
     ctx.fillStyle='#8a5a2c'; // legs
     ctx.fillRect(px+9, py+24+bob, 6, 6);
     ctx.fillRect(px+17, py+24+bob, 6, 6);
+    // quest-available marker: bobbing yellow "!" over her head
+    if(n.name==='Milkmaid' && player.milkQuest==='none'){
+      const mbob = Math.round(Math.sin(animTimer*0.12)*2);
+      const mkx = px+16, mky = py-16+mbob;
+      ctx.fillStyle='rgba(0,0,0,0.5)'; // outline
+      ctx.fillRect(mkx-3, mky-1, 6, 9);
+      ctx.fillRect(mkx-3, mky+9, 6, 4);
+      ctx.fillStyle='#ffd54a'; // yellow stem + dot
+      ctx.fillRect(mkx-2, mky, 4, 7);
+      ctx.fillRect(mkx-2, mky+9, 4, 3);
+      ctx.fillStyle='#fff4c2'; // shine
+      ctx.fillRect(mkx-2, mky, 2, 3);
+    }
   });
+}
+
+function drawMilkmaidSpriteAt(fx, fy){
+  const px = fx*TS, py = fy*TS;
+  const step = (Math.floor(animTimer/8)%2)===0; // walk-cycle
+  const bob = step?0:1;
+  ctx.fillStyle='#f4c98a'; // skin
+  ctx.fillRect(px+11, py+4+bob, 10, 8);
+  ctx.fillStyle='#e0b84c'; // hair
+  ctx.fillRect(px+10, py+2+bob, 12, 4);
+  ctx.fillStyle='#c76b98'; // pink dress
+  ctx.fillRect(px+8, py+12+bob, 16, 12);
+  ctx.fillStyle='#f0ece2'; // apron
+  ctx.fillRect(px+11, py+14+bob, 10, 10);
+  ctx.fillStyle='#f0ece2'; // kerchief
+  ctx.fillRect(px+10, py+1+bob, 12, 2);
+  ctx.fillStyle='#8a5a2c'; // legs (walk-cycle stagger)
+  ctx.fillRect(px+9,  py+24+(step?0:1), 6, 6);
+  ctx.fillRect(px+17, py+24+(step?1:0), 6, 6);
+  // milk pail
+  ctx.fillStyle='#c9c9c9';
+  ctx.fillRect(px+22, py+16+bob, 6, 6);
+  ctx.fillStyle='#e8e8e8';
+  ctx.fillRect(px+22, py+16+bob, 6, 2);
+  ctx.strokeStyle='#9a9a9a';
+  ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(px+25, py+16+bob, 3, Math.PI, 0); ctx.stroke();
+}
+function interpAlong(route, walk){
+  const pos = route[Math.min(walk.idx, route.length-1)];
+  const next = route[Math.min(walk.idx+1, route.length-1)];
+  const t = Math.min(1, walk.timer/14);
+  return { fx: pos.x + (next.x-pos.x)*t, fy: pos.y + (next.y-pos.y)*t };
+}
+function drawMilkmaidWalking(){
+  if(!milkmaidWalk) return;
+  const {fx, fy} = interpAlong(MILKMAID_ROUTE, milkmaidWalk);
+  drawMilkmaidSpriteAt(fx, fy);
+}
+function drawMilkmaidReturnLeg(){
+  const route = returnRouteFor(milkmaidReturnStage);
+  if(!route || !milkmaidReturn) return;
+  const {fx, fy} = interpAlong(route, milkmaidReturn);
+  drawMilkmaidSpriteAt(fx, fy);
 }
 
 function drawFisherman(){
@@ -2932,13 +4111,74 @@ function drawPatrons(){
   });
 }
 
+function drawVineOverlay(px, py){
+  const pulse = 0.4 + 0.35*Math.sin(animTimer*0.06);
+  ctx.save();
+  ctx.shadowColor = `rgba(40,150,70,${pulse.toFixed(2)})`;
+  ctx.shadowBlur = 9;
+  ctx.lineCap = 'round';
+  const vines = [
+    [[px,      py+3 ], [px+10, py+16], [px+20, py+2 ], [px+TS, py+9 ]],
+    [[px,      py+15], [px+9,  py+28], [px+22, py+12], [px+TS, py+22]],
+    [[px,      py+26], [px+14, py+20], [px+18, py+30], [px+TS, py+27]],
+    [[px+5,    py   ], [px+2,  py+12], [px+14, py+22], [px+11, py+TS]],
+    [[px+22,   py   ], [px+26, py+13], [px+16, py+20], [px+21, py+TS]],
+  ];
+  function bez(v, s){
+    const mt=1-s;
+    const x = mt*mt*mt*v[0][0] + 3*mt*mt*s*v[1][0] + 3*mt*s*s*v[2][0] + s*s*s*v[3][0];
+    const y = mt*mt*mt*v[0][1] + 3*mt*mt*s*v[1][1] + 3*mt*s*s*v[2][1] + s*s*s*v[3][1];
+    const dx = 3*mt*mt*(v[1][0]-v[0][0]) + 6*mt*s*(v[2][0]-v[1][0]) + 3*s*s*(v[3][0]-v[2][0]);
+    const dy = 3*mt*mt*(v[1][1]-v[0][1]) + 6*mt*s*(v[2][1]-v[1][1]) + 3*s*s*(v[3][1]-v[2][1]);
+    const len = Math.hypot(dx,dy) || 1;
+    return {x, y, nx:-dy/len, ny:dx/len};
+  }
+  vines.forEach((v)=>{
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#14521f';
+    ctx.beginPath();
+    ctx.moveTo(v[0][0], v[0][1]);
+    ctx.bezierCurveTo(v[1][0], v[1][1], v[2][0], v[2][1], v[3][0], v[3][1]);
+    ctx.stroke();
+  });
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#0f3d17';
+  ctx.fillStyle = '#0f3d17';
+  ctx.lineWidth = 1.5;
+  vines.forEach((v)=>{
+    for(let k=1; k<=5; k++){
+      const s = k/6;
+      const p = bez(v, s);
+      const side = (k%2===0) ? 1 : -1;
+      const spineLen = 5;
+      const bx = p.x, by = p.y;
+      const tx = p.x + p.nx*side*spineLen, ty = p.y + p.ny*side*spineLen;
+      ctx.beginPath();
+      ctx.moveTo(bx - p.nx*side*1.5, by - p.ny*side*1.5);
+      ctx.lineTo(tx, ty);
+      ctx.lineTo(bx + p.nx*side*1.5, by + p.ny*side*1.5);
+      ctx.closePath();
+      ctx.fill();
+    }
+  });
+  vines.forEach((v)=>{
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#2a7a38';
+    ctx.beginPath();
+    ctx.moveTo(v[0][0], v[0][1]);
+    ctx.bezierCurveTo(v[1][0], v[1][1], v[2][0], v[2][1], v[3][0], v[3][1]);
+    ctx.stroke();
+  });
+  ctx.lineCap = 'butt';
+  ctx.lineWidth = 1;
+  ctx.restore();
+}
+
 function drawOverworld(){
   for(let y=0;y<ROWS;y++)
     for(let x=0;x<COLS;x++)
       drawTile(x,y,map[y][x]);
   if(player.zone==='overworld'){
-    drawPathConnector();
-    drawTownDirt();
     // redraw buildings on top of the dirt patch
     for(let y=0;y<ROWS;y++)
       for(let x=0;x<COLS;x++){
@@ -2952,10 +4192,25 @@ function drawOverworld(){
       for(let x=0;x<COLS;x++)
         if(map[y][x]===27) drawTile(x,y,27);
     drawFisherman();
+    // captain and guards mustered outside the garrison during the quest
+    if(captainAtGarrison()) drawGarrisonMuster();
+    if(musterCharge) drawMusterCharge();
+    // magical vine covering the eastern exit until the dragon is defeated
+    if(!player.vineDestroyed) drawVineOverlay(VINE_TILE.x*TS, VINE_TILE.y*TS);
   }
-  if(player.zone==='meadow'){ drawCommonsCows(); drawCommonsNpcs(); }
+  if(player.zone==='meadow'){ drawCommonsCows(); drawCommonsNpcs(); if(milkmaidWalk) drawMilkmaidWalking(); }
+  // return-journey leg: draw her walking in whichever zone matches her current stage
+  if(milkmaidReturnStage && milkmaidReturn && zoneForStage(milkmaidReturnStage)===player.zone){
+    drawMilkmaidReturnLeg();
+  }
   if(player.zone==='citadel') drawCitadelCastle();
-  if(player.zone==='inn'){ drawInnkeeper(); drawPatrons(); }
+  if(player.zone==='farmland') drawBarn();
+  if(player.zone==='farmland') drawFarmlandNpcs();
+  if(player.zone==='throne') drawThroneRoyals();
+  if(player.zone==='hall' && (captainWalk || captainReturn || captainPos || captainAtPost)) drawCaptain();
+  if(player.zone==='garrison' && !player.bossDefeated) drawGarrisonDragon();
+  if(captainRemainsPresent()) drawCaptainRemains();
+  if(player.zone==='inn'){ drawInnkeeper(); drawPatrons(); if(milkmaidAtInn) drawMilkmaidAtInn(); }
   if(player.zone==='store') drawShopkeeper();
   drawPlayerSprite(player.x*TS, player.y*TS);
 }
@@ -2972,11 +4227,21 @@ function tryMove(dx,dy){
   const nx=player.x+dx, ny=player.y+dy;
   const t = tileAt(nx,ny);
   if(isBlocked(t)) return;
-  if(player.zone==='meadow' && COMMONS_NPCS.some(n=>n.x===nx && n.y===ny)) return; // villagers block the way
+  if(player.zone==='farmland' && FARMLAND_NPCS.some(n=>n.x===nx && n.y===ny)) return; // farmer blocks the way
+  if(player.zone==='meadow' && COMMONS_NPCS.some(n=>n.x===nx && n.y===ny && !(n.name==='Milkmaid' && milkmaidAtInn))) return; // villagers block the way
   if(player.zone==='meadow' && COMMONS_COWS.some(c=>c.x===nx && c.y===ny)) return; // cows block the way
   if(player.zone==='overworld' && nx===FISHERMAN.x && ny===FISHERMAN.y) return; // fisherman blocks his fishing spot
   if(player.zone==='overworld' && ((nx===FISHERMAN.x-1 && ny===FISHERMAN.y) || (nx===FISHERMAN.x && ny===FISHERMAN.y+1))) return; // his chair and tackle box
   if(player.zone==='inn' && nx===INNKEEPER.x && ny===INNKEEPER.y) return; // innkeeper blocks the way
+  if(player.zone==='overworld' && !player.vineDestroyed && nx===VINE_TILE.x && ny===VINE_TILE.y) return; // vine seals the exit
+  if(captainAtGarrison() && (
+      (nx===CAPTAIN_MUSTER.x && ny===CAPTAIN_MUSTER.y) ||
+      MUSTER_GUARDS.some(gd=>gd.x===nx && gd.y===ny))) return; // captain and guards muster outside the garrison
+  if(captainRemainsPresent() && nx===CAPTAIN_REMAINS.x && ny===CAPTAIN_REMAINS.y) return; // the captain's remains
+  if(player.zone==='hall' && captainPos && !captainReturn && nx===captainPos.x && ny===captainPos.y) return; // captain standing
+  if(player.zone==='hall' && captainAtPost && nx===CAPTAIN_POST.x && ny===CAPTAIN_POST.y) return; // captain stands guard
+  if(player.zone==='inn' && milkmaidAtInn && nx===MILKMAID_INN.x && ny===MILKMAID_INN.y) return; // milkmaid blocks the way
+  if(player.zone==='garrison' && !player.bossDefeated && nx>=GARRISON_DRAGON.x-1 && nx<=GARRISON_DRAGON.x+2 && Math.abs(ny-GARRISON_DRAGON.y)<=1) return; // the dragon fills the room
   if(player.zone==='inn' && INN_PATRONS.some(p=>p.x===nx && p.y===ny)) return; // patrons block the way
   if(player.zone==='store' && nx===SHOPKEEPER.x && ny===SHOPKEEPER.y) return; // shopkeeper blocks the way
   player.x=nx; player.y=ny;
@@ -2989,6 +4254,28 @@ function tryMove(dx,dy){
       setActiveZone('inn');
       player.x=6; player.y=3;
       player.facing='right';
+    } else if(from==='hall'){
+      if(ny<=1){ // north rug → throne room
+        setActiveZone('throne');
+        player.x=9; player.y=11;
+        player.facing='up';
+      } else { // south rug → citadel courtyard
+        setActiveZone('citadel');
+        player.x=9; player.y=5;   // just south of the castle door
+        player.facing='down';
+      }
+    } else if(from==='throne'){
+      setActiveZone('hall');
+      player.x=9; player.y=2;   // step back onto the hall's north carpet
+      player.facing='down';
+    } else if(from==='barn'){
+      setActiveZone('farmland');
+      player.x=3; player.y=7;   // step out below the barn door
+      player.facing='down';
+    } else if(from==='garrison'){
+      setActiveZone('overworld');
+      player.x=16; player.y=4;  // forecourt below the garrison door
+      player.facing='down';
     } else {
       setActiveZone('overworld');
       player.x = (from==='store') ? 8 : 3;
@@ -3003,6 +4290,23 @@ function tryMove(dx,dy){
     player.x=9; player.y=9;
     player.facing='up';
     persistSave();
+    return;
+  }
+  if(t===44 && player.zone==='farmland'){ // barn door → barn interior
+    setActiveZone('barn');
+    player.x=9; player.y=10;
+    player.facing='up';
+    persistSave();
+    return;
+  }
+  if(t===35 && player.zone==='citadel'){ // castle door → main hall
+    setActiveZone('hall');
+    player.x=9; player.y=12;
+    player.facing='up';
+    persistSave();
+    if(!player.captainMet){
+      startCaptainCutscene();
+    }
     return;
   }
   if(t===13){ // zone exit
@@ -3026,10 +4330,18 @@ function tryMove(dx,dy){
       setActiveZone('citadel');
       player.x=9; player.y=ROWS-2;
       player.facing='up';
+    } else if(player.zone==='meadow' && ny>=ROWS-1){ // south gate → farmland
+      setActiveZone('farmland');
+      player.x=12; player.y=1;
+      player.facing='down';
     } else if(player.zone==='meadow'){ // east path → back to outskirts
       setActiveZone('overworld');
       player.x=1; player.y=7;
       player.facing='right';
+    } else if(player.zone==='farmland'){ // north gate → back to the commons
+      setActiveZone('meadow');
+      player.x=12; player.y=13;
+      player.facing='up';
     } else if(player.zone==='citadel'){ // south gate → back to the commons
       setActiveZone('meadow');
       player.x=9; player.y=1;
@@ -3042,7 +4354,7 @@ function tryMove(dx,dy){
     persistSave();
     return;
   }
-  if((t===0 || t===15) && player.zone!=='meadow'){
+  if((t===0 || t===15) && player.zone!=='meadow' && player.zone!=='farmland'){
     if(Math.random()<0.16){
       startRandomBattle();
       return;
@@ -3050,10 +4362,15 @@ function tryMove(dx,dy){
   }
 }
 
-function adjacentToVine(){
+function adjacentToSignpost(){
   if(player.zone!=='overworld') return false;
-  return tileAt(player.x+1,player.y)===12 || tileAt(player.x-1,player.y)===12 ||
-         tileAt(player.x,player.y+1)===12 || tileAt(player.x,player.y-1)===12;
+  return tileAt(player.x+1,player.y)===46 || tileAt(player.x-1,player.y)===46
+      || tileAt(player.x,player.y+1)===46 || tileAt(player.x,player.y-1)===46;
+}
+const VINE_TILE = {x:19, y:7}; // eastern exit, vine-sealed until the dragon falls
+function adjacentToVine(){
+  if(player.zone!=='overworld' || player.vineDestroyed) return false;
+  return Math.abs(player.x-VINE_TILE.x)+Math.abs(player.y-VINE_TILE.y)===1;
 }
 function hasQuestHeart(){
   return player.gear.some(g=>g.id==='green_dragons_heart');
@@ -3178,6 +4495,34 @@ function updateFishing(){
     endFishing('The fish slipped away...', '#9fb3ff');
   }
 }
+function drawTileGridOverlay(){
+  if(!showTileGrid) return;
+  ctx.save();
+  ctx.font = '8px "Courier New", monospace';
+  ctx.textBaseline = 'top';
+  for(let y=0;y<ROWS;y++){
+    for(let x=0;x<COLS;x++){
+      const px = x*TS, py = y*TS;
+      // grid line
+      ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px+0.5, py+0.5, TS-1, TS-1);
+      // coordinate label with a dark backing for legibility
+      const label = x+','+y;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(px+1, py+1, label.length*5+2, 9);
+      ctx.fillStyle = '#7CFC00';
+      ctx.fillText(label, px+2, py+1);
+    }
+  }
+  // corner banner so it's obvious debug mode is on
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0, VIEW_H-14, 150, 14);
+  ctx.fillStyle = '#7CFC00';
+  ctx.fillText('TILE GRID (G to hide)', 3, VIEW_H-13);
+  ctx.restore();
+}
+
 function drawFishingOverlay(){
   if(fishing){
     const px = player.x*TS, py = player.y*TS;
@@ -3223,7 +4568,7 @@ function drawFishingOverlay(){
       const px = player.x*TS, py = player.y*TS;
       ctx.font='bold 10px "Courier New", monospace';
       const w = ctx.measureText(fishingToast.text).width;
-      const tx = Math.max(4, Math.min(canvas.width-w-4, px+16-w/2));
+      const tx = Math.max(4, Math.min(VIEW_W-w-4, px+16-w/2));
       ctx.strokeStyle='#000';
       ctx.lineWidth=3;
       ctx.strokeText(fishingToast.text, tx, py-8);
@@ -3297,17 +4642,439 @@ window.__ff1_fishermanSell = (kind)=>{
   renderFishermanShop(`Sold a ${f.name} for ${f.sell} G!`);
 };
 
+function nearGarrisonDragon(){
+  if(player.zone!=='garrison' || player.bossDefeated) return false;
+  // adjacent to the 3x3 dragon footprint
+  return Math.abs(player.x-GARRISON_DRAGON.x)<=2 && Math.abs(player.y-GARRISON_DRAGON.y)<=2
+      && !(Math.abs(player.x-GARRISON_DRAGON.x)<=1 && Math.abs(player.y-GARRISON_DRAGON.y)<=1);
+}
+function nearThroneRoyal(){
+  if(player.zone!=='throne') return null;
+  // thrones sit at row 2 behind a dais; the player stands on the carpet/floor below.
+  // match by column, within 2 tiles below the throne.
+  return THRONE_ROYALS.find(r => player.x===r.x && (player.y - r.y) >= 1 && (player.y - r.y) <= 2) || null;
+}
+function throneRoyalDialog(r){
+  state='dialog';
+  const color = r.name==='King' ? '#ffd54a' : '#c9a0e8';
+  // the King closes out the avenge quest once you've slain the dragon
+  if(r.name==='King' && player.avengeQuest==='active'){
+    if(player.bossDefeated){
+      player.avengeQuest='done';
+      const reward = 200;
+      player.gold += reward;
+      updateStatBar();
+      showDialogue(
+        `<b style="color:${color}">KING</b><br>You bring grave news... my Captain and his guards, fallen. But the beast is slain, and their sacrifice was not in vain.<br>The realm owes you a debt it cannot repay. Take this, with the crown's gratitude.<br><span style="color:var(--gold)">Quest complete: Avenge the Captain. Reward: ${reward} Gold.</span>`,
+        {center:true, buttons:[{label:'FOR THE REALM', action:()=>{ hideDialogue(); state='overworld'; }}]}
+      );
+      return;
+    } else {
+      showDialogue(
+        `<b style="color:${color}">KING</b><br>My Captain marched on the Garrison, you say? Then the dragon still holds it. Slay the beast and avenge him — only then bring me word.`,
+        {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+      );
+      return;
+    }
+  }
+  const line = r.lines[Math.floor(Math.random()*r.lines.length)];
+  showDialogue(
+    `<b style="color:${color}">${r.name.toUpperCase()}</b><br>${line}`,
+    {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+  );
+}
 function nearCommonsNpc(){
   if(player.zone!=='meadow') return null;
-  return COMMONS_NPCS.find(n=> Math.abs(player.x-n.x)+Math.abs(player.y-n.y) <= 1) || null;
+  return COMMONS_NPCS.find(n=> Math.abs(player.x-n.x)+Math.abs(player.y-n.y) <= 1 && !(n.name==='Milkmaid' && (milkmaidAtInn || milkmaidWalk || milkmaidReturnStage))) || null;
+}
+const MILKMAID_INN = {x:8, y:8}; // where she waits inside the inn during the quest
+const GARRISON_DRAGON = {x:9, y:4}; // the green dragon lurking in the garrison (interact to fight)
+// Captain of the Guard — first-entry hall cutscene
+const CAPTAIN_START = {x:9, y:5};   // where he stands before walking to greet you
+let captainWalk = null;             // {y, timer} while he strides toward the player
+let captainAtPost = false;          // he remains in the hall after the cutscene
+let captainPos = null;              // {x,y} his current standing position (held between walk legs)
+let captainReturn = null;           // {path, idx, timer} while he walks off to his post
+const CAPTAIN_POST = {x:11, y:8};   // where he stands guard afterward
+// garrison muster — captain and two guards outside the garrison once the quest is active
+const CAPTAIN_MUSTER = {x:16, y:4};
+const MUSTER_GUARDS = [{x:15, y:4}, {x:17, y:4}];
+let musterCharge = null; // {timer, phase} while the three march into the garrison
+const CAPTAIN_REMAINS = {x:11, y:8}; // where his remains lie inside the garrison
+function captainRemainsPresent(){
+  // his remains appear once he's charged in and fallen, until you've reported to the King
+  return player.zone==='garrison' && player.captainCharged && player.avengeQuest!=='done';
+}
+function captainAtGarrison(){
+  return player.zone==='overworld' && player.dragonQuest==='active' && !player.bossDefeated && !player.captainCharged && !musterCharge;
+}
+function startCaptainCutscene(){
+  // he begins near the throne end and strides down the carpet to meet you at (9,11)
+  captainWalk = {y: CAPTAIN_START.y, timer: 0, target: 11};
+  captainAtPost = false;
+  captainPos = null;
+  captainReturn = null;
+  state = 'cutscene'; // freeze player input while he approaches
+}
+function updateCaptainWalk(){
+  if(!captainWalk) return;
+  captainWalk.timer++;
+  if(captainWalk.timer < 22) return; // slower, more deliberate stride
+  captainWalk.timer = 0;
+  if(captainWalk.y < captainWalk.target){
+    captainWalk.y++;
+  } else {
+    // arrived in front of the player — hold this spot and deliver his message
+    captainPos = {x:9, y:captainWalk.y};
+    captainWalk = null;
+    captainSpeech();
+  }
+}
+// after accepting, he marches out the hall's south exit toward the garrison
+function startCaptainExit(){
+  const path = [];
+  let {x, y} = captainPos; // (9,11)
+  // sidestep around the player (who stands at 9,12) toward the other exit rug at (10,13)
+  const px = player.x, py = player.y;
+  if(x===px){
+    // shift one column over to avoid walking through the player
+    const over = (px < 15) ? x+1 : x-1;
+    path.push({x:over, y}); x = over;
+  }
+  while(y < 13){ y++; path.push({x, y}); } // down to the south exit rug row
+  captainReturn = {path, idx:0, timer:0, exiting:true};
+}
+// exit starting from his guard post (declined-then-accepted case)
+function startCaptainExitFromPost(){
+  const path = [];
+  let x = CAPTAIN_POST.x, y = CAPTAIN_POST.y; // (11,8)
+  while(x > 9){ x--; path.push({x, y}); }      // over to the carpet
+  while(y < 13){ y++; path.push({x, y}); }     // down to the south exit
+  captainReturn = {path, idx:0, timer:0, exiting:true};
+}
+// after the player responds, he walks off to his guard post
+function startCaptainReturn(){
+  const path = [];
+  // from his current spot (9,10) over to the post at (11,8): step right then up
+  let {x, y} = captainPos;
+  while(x < CAPTAIN_POST.x){ x++; path.push({x, y}); }
+  while(y > CAPTAIN_POST.y){ y--; path.push({x, y}); }
+  captainReturn = {path, idx:0, timer:0};
+}
+function updateCaptainReturn(){
+  if(!captainReturn) return;
+  captainReturn.timer++;
+  if(captainReturn.timer < 12) return;
+  captainReturn.timer = 0;
+  if(captainReturn.idx < captainReturn.path.length){
+    captainPos = captainReturn.path[captainReturn.idx];
+    captainReturn.idx++;
+  } else {
+    if(captainReturn.exiting){
+      // he's marched out of the hall toward the garrison
+      captainReturn = null;
+      captainPos = null;
+      captainAtPost = false;
+    } else {
+      captainReturn = null;
+      captainAtPost = true; // settled at his guard post
+    }
+  }
+}
+function captainSpeech(){
+  state='dialog';
+  showDialogue(
+    `<b style="color:#c9d4ff">CAPTAIN OF THE GUARD</b><br>Halt, traveler! By order of the King, I am gathering every able-bodied soul in the realm.<br>A <b style="color:#4fb82f">Green Dragon</b> has seized the <b>Garrison</b> in the Outskirts, and the crown calls for brave hands to slay it.<br>Will you take up this charge?`,
+    {center:true, buttons:[
+      {label:'I ACCEPT', action:()=>{
+        player.captainMet = true;
+        player.dragonQuest = 'active';
+        updateStatBar();
+        showDialogue(
+          `<b style="color:#c9d4ff">CAPTAIN OF THE GUARD</b><br>Well spoken! I'll muster my men at once.<br>Meet me <b>outside the Garrison</b> in the Outskirts — we march on the beast together.<br><span style="color:var(--gold)">Quest started: Meet the Captain outside the Garrison.</span>`,
+          {center:true, buttons:[{label:'ONWARD', action:()=>{ hideDialogue(); state='overworld'; startCaptainExit(); }}]}
+        );
+      }},
+      {label:'NOT YET', action:()=>{
+        player.captainMet = true; // cutscene won't replay, but he'll still offer if you talk to him
+        updateStatBar();
+        showDialogue(
+          `<b style="color:#c9d4ff">CAPTAIN OF THE GUARD</b><br>Hmph. Seek me out when your courage hardens — the realm has need of you.`,
+          {center:true, buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; startCaptainReturn(); }}]}
+        );
+      }}
+    ]}
+  );
+}
+// royalty seated on the throne room dais
+const THRONE_ROYALS = [
+  {x:9,  y:2, name:'King',
+   lines:[`"You stand in the throne room of the realm, traveler. Few are granted this audience."`,
+          `"That green dragon has terrorized my people long enough. Rid us of the beast and you shall be honored."`,
+          `"The kingdom endures because brave souls like you take up the sword. I am grateful."`]},
+  {x:10, y:2, name:'Queen',
+   lines:[`"Welcome, traveler. The King speaks plainly, but know that our hope rides with you."`,
+          `"Tend to the villagers in the Commons if you can — they have suffered much."`,
+          `"Should you ever tire on your journey, our halls are always open to you."`]}
+];
+const MILKMAID_HOME = {x:2, y:10};
+// route from her pasture spot up to the avenue, then east to the exit toward the Outskirts
+const MILKMAID_ROUTE = (()=>{
+  const p = [];
+  for(let y=10;y>=7;y--) p.push({x:2, y});        // walk up column 2 to the avenue
+  for(let x=3;x<=19;x++) p.push({x, y:7});         // east along the avenue to the exit
+  return p;
+})();
+let milkmaidWalk = null;     // {idx, timer} while she's crossing the Commons (outbound)
+let milkmaidAtInn = false;   // she's waiting inside the inn
+let milkmaidReturnPending = false; // quest done; she should walk home next time you're in the Commons
+function startMilkmaidWalk(){
+  // if the player is watching (in the Commons), she visibly walks to the exit;
+  // otherwise she's simply found waiting at the inn.
+  if(player.zone==='meadow'){
+    milkmaidWalk = {idx:0, timer:0};
+    milkmaidAtInn = false;
+  } else {
+    milkmaidWalk = null;
+    milkmaidAtInn = true;
+  }
+}
+function updateMilkmaidWalk(){
+  if(!milkmaidWalk) return;
+  milkmaidWalk.timer++;
+  if(milkmaidWalk.timer < 14) return; // ~0.23s per tile at 60fps
+  milkmaidWalk.timer = 0;
+  milkmaidWalk.idx++;
+  if(milkmaidWalk.idx >= MILKMAID_ROUTE.length){
+    // reached the exit — she's off to the inn
+    milkmaidWalk = null;
+    milkmaidAtInn = true;
+    persistSave();
+  }
+}
+function milkmaidWalkPos(){
+  if(!milkmaidWalk) return null;
+  return MILKMAID_ROUTE[Math.min(milkmaidWalk.idx, MILKMAID_ROUTE.length-1)];
+}
+const MILKMAID_ROUTE_BACK = [...MILKMAID_ROUTE].reverse(); // commons: exit → home
+// return journey routes per zone the player passes through
+const MILKMAID_INN_ROUTE = (()=>{
+  const p = [];
+  p.push({x:8, y:8});                          // at the counter spot
+  for(let y=9;y<=11;y++) p.push({x:9, y});     // step to the exit rug
+  return p;
+})();
+const MILKMAID_OUTSKIRTS_ROUTE = (()=>{
+  const p = [];
+  // from just inside the inn door (3,5) down to the avenue, then west to the Commons exit (0,7)
+  p.push({x:3, y:5}); p.push({x:3, y:6}); p.push({x:3, y:7});
+  for(let x=2;x>=0;x--) p.push({x, y:7});
+  return p;
+})();
+// staged return: which leg of the trip home she's on
+let milkmaidReturnStage = null; // 'inn' | 'outskirts' | 'commons' | null
+let milkmaidReturn = null;      // {idx, timer} within the current stage
+function returnRouteFor(stage){
+  return stage==='inn' ? MILKMAID_INN_ROUTE
+       : stage==='outskirts' ? MILKMAID_OUTSKIRTS_ROUTE
+       : stage==='commons' ? MILKMAID_ROUTE_BACK
+       : null;
+}
+function zoneForStage(stage){
+  return stage==='inn' ? 'inn' : stage==='outskirts' ? 'overworld' : stage==='commons' ? 'meadow' : null;
+}
+function startMilkmaidReturn(){
+  // begin the homeward journey; she'll animate through each zone the player shares with her
+  milkmaidReturnPending = false;
+  milkmaidReturnStage = 'inn';
+  milkmaidReturn = null;
+}
+function advanceMilkmaidStage(){
+  if(milkmaidReturnStage==='inn') milkmaidReturnStage='outskirts';
+  else if(milkmaidReturnStage==='outskirts') milkmaidReturnStage='commons';
+  else if(milkmaidReturnStage==='commons') milkmaidReturnStage=null; // arrived home
+  milkmaidReturn = null;
+  persistSave();
+}
+function updateMilkmaidReturn(){
+  if(!milkmaidReturnStage) return;
+  // only animate the leg matching the player's current zone
+  if(player.zone !== zoneForStage(milkmaidReturnStage)) return;
+  const route = returnRouteFor(milkmaidReturnStage);
+  if(!milkmaidReturn) milkmaidReturn = {idx:0, timer:0};
+  milkmaidReturn.timer++;
+  if(milkmaidReturn.timer < 14) return;
+  milkmaidReturn.timer = 0;
+  milkmaidReturn.idx++;
+  if(milkmaidReturn.idx >= route.length - 1){
+    advanceMilkmaidStage(); // finished this leg
+  }
+}
+function syncMilkmaidState(){
+  // on load: if the quest is active and no walk is mid-flight, she's at the inn
+  if(player.milkQuest==='active' && !milkmaidWalk) milkmaidAtInn = true;
+  else if(player.milkQuest!=='active') milkmaidAtInn = false;
+  // a mid-journey return doesn't survive a reload — if the quest is done, she's simply home
+  if(player.milkQuest==='done'){ milkmaidReturnPending = false; milkmaidReturnStage = null; milkmaidReturn = null; }
+}
+const CABBAGE_SEED_PRICE = 15;
+function farmerDialog(){
+  renderSeedShop();
+}
+function renderSeedShop(note){
+  state='dialog';
+  const coin = `<svg width="8" height="8" viewBox="0 0 24 24" style="vertical-align:-1px;">
+    <circle cx="12" cy="12" r="10" fill="#ffd54a" stroke="#b8860b" stroke-width="2"/>
+    <circle cx="12" cy="12" r="5.5" fill="none" stroke="#b8860b" stroke-width="1.5"/>
+  </svg>`;
+  const afford = player.gold >= CABBAGE_SEED_PRICE;
+  const seedBtn = `<button class="shopBtn" ${afford?'':'disabled'} style="border-color:${RARITY_COLORS.common};"
+    onclick="window.__ff1_buySeed()">
+    <span class="shopIcon">${consumableIconSVG('cabbage_seed')}</span>
+    <span class="shopPrice">${coin} ${CABBAGE_SEED_PRICE} G</span>
+  </button>`;
+  const noteHtml = note ? `<div style="color:var(--gold); margin-top:4px;">${note}</div>` : '';
+  showDialogue(
+    `<b style="color:#c9a94a">FARMER</b> — Gold: ${player.gold}<br>
+    <span style="font-size:9px; opacity:0.85;">"Fancy workin' the soil? Fresh cabbage seeds here — sow 'em in my tilled plots yonder."</span>
+    <div class="shopSection"><div class="shopSectionLabel">FOR SALE</div><div class="shopGrid">${seedBtn}</div></div>
+    ${noteHtml}`,
+    {buttons:[{label:'LEAVE', action:()=>{ hideDialogue(); state='overworld'; }}]}
+  );
+}
+window.__ff1_buySeed = ()=>{
+  if(player.gold < CABBAGE_SEED_PRICE){ renderSeedShop('Not enough gold — 15 G a packet.'); return; }
+  if(!ensureConsSlot('cabbage_seed')){ renderSeedShop('Your bag is full!'); return; }
+  player.gold -= CABBAGE_SEED_PRICE;
+  consAdd('cabbage_seed', 1);
+  updateStatBar();
+  persistSave();
+  renderSeedShop('Bought Cabbage Seeds! Check your bag (I).');
+};
+// ---------- PLANTING ----------
+function openPlantMenu(key){
+  state='dialog';
+  // gather the seed kinds the player currently owns
+  const owned = CONSUMABLE_KINDS.filter(k=> isSeedKind(k) && consQty(k)>0);
+  if(owned.length===0){
+    showDialogue(
+      `<b style="color:#c9a94a">FARM PLOT</b><br>Freshly tilled soil, ready for sowing.<br><span style="opacity:0.8;">You have no seeds. Buy some from the Farmer.</span>`,
+      {center:true, buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+    );
+    return;
+  }
+  const buttons = owned.map(k=>({
+    label: `PLANT ${SEED_DEFS[k].name.toUpperCase()}`,
+    action: ()=>{ plantSeed(key, k); }
+  }));
+  buttons.push({label:'CANCEL', action:()=>{ hideDialogue(); state='overworld'; }});
+  showDialogue(
+    `<b style="color:#c9a94a">FARM PLOT</b><br>Freshly tilled soil, ready for sowing.<br>What would you like to plant?`,
+    {center:true, buttons}
+  );
+}
+function plantSeed(key, kind){
+  consAdd(kind, -1);
+  const crop = kind.replace('_seed',''); // 'cabbage_seed' -> 'cabbage'
+  player.farmPlots[key] = { crop, plantedAt: Date.now() };
+  updateStatBar();
+  persistSave();
+  hideDialogue();
+  state='overworld';
+}
+function showPlotStatus(stage){
+  state='dialog';
+  const label = stage<=0 ? 'You planted a seed. It needs time to sprout.'
+    : stage===1 ? 'A tender seedling is coming up.'
+    : 'The cabbage is half-grown — nearly ready.';
+  showDialogue(
+    `<b style="color:#4fae52">GROWING CABBAGE</b><br>${label}`,
+    {center:true, buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+  );
+}
+function harvestPlot(key){
+  const plot = player.farmPlots[key];
+  const crop = (plot && plot.crop) || 'cabbage';
+  // add the harvested crop to the bag
+  if(!ensureConsSlot(crop)){
+    state='dialog';
+    showDialogue(
+      `<b style="color:#4fae52">HARVEST</b><br>The cabbage is ripe, but your bag is full! Make room and come back.`,
+      {center:true, buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+    );
+    return;
+  }
+  delete player.farmPlots[key];
+  consAdd(crop, 1);
+  updateStatBar();
+  persistSave();
+  state='dialog';
+  const nm = CROP_ITEM_DEFS[crop] ? CROP_ITEM_DEFS[crop].name : 'Cabbage';
+  showDialogue(
+    `<b style="color:#4fae52">HARVEST!</b><br>You gather a ripe, leafy ${nm} and tuck it into your bag.`,
+    {center:true, buttons:[{label:'NICE', action:()=>{ hideDialogue(); state='overworld'; }}]}
+  );
 }
 function commonsNpcDialog(npc){
   state='dialog';
+  if(npc.name==='Milkmaid'){ milkmaidDialog(); return; }
   const line = npc.lines[Math.floor(Math.random()*npc.lines.length)];
   showDialogue(
     `<b style="color:#9fb3ff">${npc.name.toUpperCase()}</b><br>${line}`,
     {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
   );
+}
+function milkmaidDialog(){
+  state='dialog';
+  const q = player.milkQuest;
+  if(q==='none'){
+    showDialogue(
+      `<b style="color:#9fb3ff">MILKMAID</b><br>"Oh, good — a strong pair of hands! I've a fresh pail of milk promised to the innkeeper over in the Outskirts, but I can't carry it and mind the cows both.<br>Would you take it to the inn for me? I'll meet you there once I've penned the herd."`,
+      {buttons:[
+        {label:'ACCEPT', action:()=>{
+          player.milkQuest='active';
+          startMilkmaidWalk();
+          updateStatBar();
+          showDialogue(
+            `<b style="color:#9fb3ff">MILKMAID</b><br>"Bless you! Take the pail to the <b>inn</b> in the Outskirts — mind you don't spill it. I'll set off now and meet you inside.<br><span style="color:var(--gold)">Quest started: Deliver the milk to the inn.</span>"`,
+            {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+          );
+        }},
+        {label:'NOT NOW', action:()=>{ hideDialogue(); state='overworld'; }}
+      ]}
+    );
+  } else if(q==='active'){
+    showDialogue(
+      `<b style="color:#9fb3ff">MILKMAID</b><br>"Still got the pail? The <b>inn</b>'s east in the Outskirts — I'll meet you inside. Off you go!"`,
+      {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+    );
+  } else {
+    showDialogue(
+      `<b style="color:#9fb3ff">MILKMAID</b><br>"Thanks again for running that milk to the inn! Come by any dawn for the freshest in the kingdom."`,
+      {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+    );
+  }
+}
+function milkmaidInnDialog(){
+  state='dialog';
+  if(player.milkQuest==='active'){
+    const reward = 40;
+    player.milkQuest='done';
+    milkmaidAtInn = false; // she leaves the inn to head home
+    startMilkmaidReturn(); // begins the staged walk home (inn → outskirts → commons)
+    player.gold += reward;
+    player.potions += 1;
+    updateStatBar();
+    showDialogue(
+      `<b style="color:#9fb3ff">MILKMAID</b><br>"You made it — and not a drop spilled! The innkeeper thanks you, and so do I.<br>Here, take this for your trouble."<br><span style="color:var(--gold)">Quest complete! Reward: ${reward} Gold and a Potion.</span>`,
+      {center:true, buttons:[{label:'GREAT', action:()=>{ hideDialogue(); state='overworld'; }}]}
+    );
+  } else {
+    showDialogue(
+      `<b style="color:#9fb3ff">MILKMAID</b><br>"Lovely inn, isn't it? Best stew for miles."`,
+      {buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+    );
+  }
 }
 function nearFisherman(){
   if(player.zone!=='overworld') return false;
@@ -3320,7 +5087,10 @@ function interact(){
   if(state==='fishing'){ attemptCatch(); return; }
   if(state==='overworld'){
     if(player.zone==='inn'){
-      if(nearInnkeeper()) innkeeperDialog();
+      if(milkmaidAtInn && Math.abs(player.x-MILKMAID_INN.x)+Math.abs(player.y-MILKMAID_INN.y)<=1){
+        milkmaidInnDialog();
+      }
+      else if(nearInnkeeper()) innkeeperDialog();
       else if(nearPatron()) patronDialog();
       return;
     }
@@ -3339,14 +5109,76 @@ function interact(){
       }
       return;
     }
+    if(player.zone==='hall'){
+      if(captainAtPost && Math.abs(player.x-CAPTAIN_POST.x)+Math.abs(player.y-CAPTAIN_POST.y)<=1){
+        captainPostDialog();
+      }
+      return;
+    }
+    if(player.zone==='throne'){
+      const royal = nearThroneRoyal();
+      if(royal){ throneRoyalDialog(royal); return; }
+      return;
+    }
+    if(player.zone==='garrison'){
+      if(captainRemainsPresent() && Math.abs(player.x-CAPTAIN_REMAINS.x)+Math.abs(player.y-CAPTAIN_REMAINS.y)===1){
+        captainRemainsDialog();
+        return;
+      }
+      if(nearGarrisonDragon()){
+        state='dialog';
+        showDialogue(
+          `<b style="color:#4fb82f">GREEN DRAGON</b><br>The beast rears up with a deafening roar, smoke curling from its nostrils. There is no turning back now.`,
+          {center:true, buttons:[
+            {label:'FIGHT!', action:()=>{ hideDialogue(); beginBattle(boss, true); }},
+            {label:'NOT YET', action:()=>{ hideDialogue(); state='overworld'; }}
+          ]}
+        );
+      }
+      return;
+    }
     if(player.zone==='store'){
       if(nearShopkeeper()) openShop();
       return;
     }
+    if(player.zone==='farmland'){
+      const farmer = FARMLAND_NPCS.find(n=> Math.abs(player.x-n.x)+Math.abs(player.y-n.y)<=1);
+      if(farmer){ farmerDialog(); return; }
+      // standing on a farm plot: plant a seed, or harvest a grown crop
+      if(tileAt(player.x,player.y)===48){
+        const key = plotKey(player.x, player.y);
+        const plot = player.farmPlots[key];
+        if(plot){
+          const stage = cropStage(plot);
+          if(stage>=3){ harvestPlot(key); }
+          else { showPlotStatus(stage); }
+        } else {
+          openPlantMenu(key);
+        }
+        return;
+      }
+    }
     const t = tileAt(player.x,player.y);
+    if(captainAtGarrison() && Math.abs(player.x-CAPTAIN_MUSTER.x)+Math.abs(player.y-CAPTAIN_MUSTER.y)===1){
+      state='dialog';
+      showDialogue(
+        `<b style="color:#c9d4ff">CAPTAIN OF THE GUARD</b><br>You came. Good. My men and I will breach the gate first and draw the beast's attention.<br>Follow close behind — and finish what we start!`,
+        {center:true, buttons:[
+          {label:'READY', action:()=>{ hideDialogue(); startMusterCharge(); }}
+        ]}
+      );
+      return;
+    }
     if(t===6) enterInn();
     else if(t===7) enterStore();
     else if(t===8) enterBoss();
+    else if(adjacentToSignpost()){
+      state='dialog';
+      showDialogue(
+        `<b style="color:#c2a366">SIGNPOST</b><br>◄ WEST — The Commons<br>EAST — The Desert ►`,
+        {center:true, buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+      );
+    }
     else {
       const dirs = {right:[1,0], left:[-1,0], down:[0,1], up:[0,-1]};
       const fd = dirs[player.facing];
@@ -3377,9 +5209,13 @@ window.addEventListener('keydown', e=>{
     else if(e.key==='p'||e.key==='P') openSkillScreen();
     else if(e.key==='i'||e.key==='I') openInventory();
     else if(e.key==='c'||e.key==='C') toggleStatus();
+    else if(e.key==='g'||e.key==='G') showTileGrid = !showTileGrid;
     else if(e.key==='Escape'){ closeInventory(); closeCharSheet(); closeSkillScreen(); closeStorage(); }
   } else if(state==='dialog' && battle===null){
     if(e.key==='Escape'){ hideDialogue(); state='overworld'; }
+  } else if(state==='battle' && battle && battle.turn==='player' && !battle.locked){
+    if(['ArrowLeft','a','A'].includes(e.key)) cycleTarget(-1);
+    else if(['ArrowRight','d','D'].includes(e.key)) cycleTarget(1);
   } else if(state==='shop'){
     if(e.key==='Escape'||e.key==='e'||e.key==='E') closeShop();
   } else if(state==='fishing'){
@@ -3387,15 +5223,45 @@ window.addEventListener('keydown', e=>{
     else if(e.key==='Escape') cancelFishing();
   }
 });
-document.getElementById('btnUp').onclick=()=>tryMove(0,-1);
-document.getElementById('btnDown').onclick=()=>tryMove(0,1);
-document.getElementById('btnLeft').onclick=()=>tryMove(-1,0);
-document.getElementById('btnRight').onclick=()=>tryMove(1,0);
-document.getElementById('btnInteract').onclick=()=>interact();
+// D-pad and ACTION are wired below via the touch/click dispatch loop for mobile support.
+
+// Mobile: bind the D-pad + action to touchstart so rapid taps register instantly
+// and preventDefault stops iOS Safari's double-tap-to-zoom gesture. A short lock
+// after a touch prevents the synthetic mouse click from moving a second time.
+let __touchLockUntil = 0;
+[['btnUp',()=>tryMove(0,-1)], ['btnDown',()=>tryMove(0,1)],
+ ['btnLeft',()=>{ if(state==='battle' && battle && battle.turn==='player' && !battle.locked) cycleTarget(-1); else tryMove(-1,0); }],
+ ['btnRight',()=>{ if(state==='battle' && battle && battle.turn==='player' && !battle.locked) cycleTarget(1); else tryMove(1,0); }],
+ ['btnInteract',()=>interact()]].forEach(([id,fn])=>{
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.onclick = null;
+  el.addEventListener('touchstart', (e)=>{
+    e.preventDefault();
+    __touchLockUntil = Date.now() + 500;
+    fn();
+  }, {passive:false});
+  el.addEventListener('touchend', (e)=>{ e.preventDefault(); }, {passive:false});
+  // desktop / mouse fallback — ignored right after a touch to prevent double moves
+  el.addEventListener('click', ()=>{ if(Date.now() > __touchLockUntil) fn(); });
+});
+
+// Belt-and-suspenders: block the browser's double-tap zoom globally on the game area.
+let __lastTouchEnd = 0;
+document.addEventListener('touchend', (e)=>{
+  const now = Date.now();
+  if(now - __lastTouchEnd <= 320){ e.preventDefault(); }
+  __lastTouchEnd = now;
+}, {passive:false});
+// iOS Safari pinch-zoom gesture events
+['gesturestart','gesturechange','gestureend'].forEach(ev=>
+  document.addEventListener(ev, (e)=>e.preventDefault(), {passive:false})
+);
 document.getElementById('btnMenu').onclick=()=>toggleStatus();
 document.getElementById('btnSkills').onclick=()=>openSkillScreen();
 document.getElementById('btnInventory').onclick=()=>openInventory();
 document.getElementById('btnSave').onclick=()=>manualSave();
+document.getElementById('btnGrid').onclick=()=>{ showTileGrid = !showTileGrid; };
 document.getElementById('btnBeginAdventure').onclick=()=>confirmCharacter();
 document.getElementById('charNameInput').addEventListener('keydown', (e)=>{
   if(e.key==='Enter') confirmCharacter();
@@ -3580,16 +5446,45 @@ const FISH_DEFS = {
   bass:       {name:'Bass',       rarity:'uncommon', heal:30, mp:0,  sell:20, chance:0.30},
   golden_koi: {name:'Golden Koi', rarity:'rare',     heal:60, mp:10, sell:75, chance:0.10}
 };
-const CONSUMABLE_KINDS = ['potion','ether','minnow','bass','golden_koi'];
+const CONSUMABLE_KINDS = ['potion','ether','minnow','bass','golden_koi','cabbage_seed','cabbage'];
+const SEED_DEFS = {
+  cabbage_seed: {name:'Cabbage Seeds', rarity:'common', sell:5}
+};
+const CROP_ITEM_DEFS = {
+  cabbage: {name:'Cabbage', rarity:'common', heal:20, sell:25}
+};
+function isSeedKind(kind){ return !!SEED_DEFS[kind]; }
+function isCropKind(kind){ return !!CROP_ITEM_DEFS[kind]; }
+// crop growth: each stage takes 60s — planted -> seedling(1m) -> half(2m) -> full(3m)
+const CROP_STAGE_MS = 60 * 1000;
+function plotKey(x,y){ return x+','+y; }
+function cropStage(plot){
+  if(!plot) return -1;
+  const elapsed = Date.now() - plot.plantedAt;
+  const stage = Math.floor(elapsed / CROP_STAGE_MS);
+  return Math.min(3, stage); // 0 planted, 1 seedling, 2 half-grown, 3 fully grown
+}
 function isFishKind(kind){ return !!FISH_DEFS[kind]; }
 function consQty(kind){
   if(kind==='potion') return player.potions;
   if(kind==='ether') return player.ethers;
+  if(isSeedKind(kind)) return (player.seedCounts && player.seedCounts[kind]) || 0;
+  if(isCropKind(kind)) return (player.cropCounts && player.cropCounts[kind]) || 0;
   return (player.fishCounts && player.fishCounts[kind]) || 0;
 }
 function consAdd(kind, n){
   if(kind==='potion'){ player.potions += n; return; }
   if(kind==='ether'){ player.ethers += n; return; }
+  if(isSeedKind(kind)){
+    if(!player.seedCounts) player.seedCounts = {};
+    player.seedCounts[kind] = ((player.seedCounts[kind]||0) + n);
+    return;
+  }
+  if(isCropKind(kind)){
+    if(!player.cropCounts) player.cropCounts = {};
+    player.cropCounts[kind] = ((player.cropCounts[kind]||0) + n);
+    return;
+  }
   if(!player.fishCounts) player.fishCounts = {};
   player.fishCounts[kind] = ((player.fishCounts[kind]||0) + n);
 }
@@ -3641,6 +5536,29 @@ function itemIconSVG(occ){
       <path d="M9 8 L12 5 L13 8 Z" fill="${body}"/>
       <circle cx="7.5" cy="11" r="1.1" fill="#101820"/>
       <path d="M5 12 Q6 13 5.5 14" stroke="rgba(0,0,0,0.3)" stroke-width="0.8" fill="none"/>
+    </svg>`;
+  }
+  if(isSeedKind(kind)){
+    // seed packet
+    return `<svg width="20" height="20" viewBox="0 0 24 24">
+      <rect x="6" y="4" width="12" height="16" rx="1" fill="#d9c48a" stroke="#a5863a" stroke-width="1"/>
+      <rect x="6" y="4" width="12" height="4" fill="#7bbf4a"/>
+      <circle cx="12" cy="13" r="4" fill="#4fae52"/>
+      <circle cx="12" cy="13" r="2" fill="#3a8f3e"/>
+      <circle cx="10.5" cy="17" r="1" fill="#6b4a2a"/>
+      <circle cx="13.5" cy="17" r="1" fill="#6b4a2a"/>
+    </svg>`;
+  }
+  if(isCropKind(kind)){
+    // a round leafy cabbage
+    return `<svg width="20" height="20" viewBox="0 0 24 24">
+      <circle cx="12" cy="13" r="8" fill="#2f7a34"/>
+      <circle cx="9" cy="11" r="3.5" fill="#3a8f3e"/>
+      <circle cx="15" cy="11" r="3.5" fill="#3a8f3e"/>
+      <circle cx="9" cy="15" r="3.5" fill="#3a8f3e"/>
+      <circle cx="15" cy="15" r="3.5" fill="#3a8f3e"/>
+      <circle cx="12" cy="13" r="4.5" fill="#7bbf4a"/>
+      <circle cx="10.5" cy="11.5" r="2" fill="#9ed86a"/>
     </svg>`;
   }
   // gear icons by equip slot
@@ -3743,6 +5661,15 @@ function useInventoryItemAtSlot(slot){
     if(f.mp) player.mp = Math.min(player.maxmp, player.mp + f.mp);
     updateStatBar();
     invFlashMsg(`Ate a ${f.name} and recovered ${f.heal} HP${f.mp?` and ${f.mp} MP`:''}!`);
+  } else if(isSeedKind(occ.kind)){
+    invFlashMsg('Plant these in a tilled farm plot at the Farmland.');
+  } else if(isCropKind(occ.kind)){
+    const cd = CROP_ITEM_DEFS[occ.kind];
+    if(player.hp>=player.maxhp){ invFlashMsg('HP is already full!'); return; }
+    consAdd(occ.kind, -1);
+    player.hp = Math.min(player.maxhp, player.hp + cd.heal);
+    updateStatBar();
+    invFlashMsg(`Ate a ${cd.name} and recovered ${cd.heal} HP!`);
   } else if(occ.kind==='gear'){
     toggleEquip(occ.uid);
   }
@@ -3770,6 +5697,26 @@ function itemInfo(occ){
       name: f.name,
       color: rc,
       desc: `<span style="color:${rc}">${rarityLabel(f.rarity)}</span> <span style="color:#9fb3ff">Fish</span><br>Eat to restore ${f.heal} HP${f.mp?` and ${f.mp} MP`:''}.`,
+      status: 'Click to eat.'
+    };
+  }
+  if(isSeedKind(occ.kind)){
+    const sd = SEED_DEFS[occ.kind];
+    const rc = RARITY_COLORS[sd.rarity];
+    return {
+      name: sd.name,
+      color: rc,
+      desc: `<span style="color:${rc}">${rarityLabel(sd.rarity)}</span> <span style="color:#9fd07a">Seed</span><br>Plant in tilled soil at the Farmland.`,
+      status: 'Sow in a farm plot.'
+    };
+  }
+  if(isCropKind(occ.kind)){
+    const cd = CROP_ITEM_DEFS[occ.kind];
+    const rc = RARITY_COLORS[cd.rarity];
+    return {
+      name: cd.name,
+      color: rc,
+      desc: `<span style="color:${rc}">${rarityLabel(cd.rarity)}</span> <span style="color:#9fd07a">Crop</span><br>Eat to restore ${cd.heal} HP, or sell it.`,
       status: 'Click to eat.'
     };
   }
@@ -4003,7 +5950,7 @@ function depositFromInventory(slot){
     }
     entry.qty++;
     consAdd(occ.kind, -1);
-    const nm = occ.kind==='potion' ? 'Potion' : occ.kind==='ether' ? 'Ether' : FISH_DEFS[occ.kind].name;
+    const nm = occ.kind==='potion' ? 'Potion' : occ.kind==='ether' ? 'Ether' : (SEED_DEFS[occ.kind] ? SEED_DEFS[occ.kind].name : (CROP_ITEM_DEFS[occ.kind] ? CROP_ITEM_DEFS[occ.kind].name : FISH_DEFS[occ.kind].name));
     storageFlash(`Deposited 1 ${nm}.`);
   } else if(occ.kind==='gear'){
     if(isEquipped(occ.uid)){ invFlashMsg('Unequip that item before storing it.'); return; }
@@ -4027,7 +5974,7 @@ function withdrawFromStorage(slot){
     consAdd(entry.kind, 1);
     entry.qty--;
     if(entry.qty<=0) tab.items = tab.items.filter(it=>it!==entry);
-    const nm = entry.kind==='potion' ? 'Potion' : entry.kind==='ether' ? 'Ether' : FISH_DEFS[entry.kind].name;
+    const nm = entry.kind==='potion' ? 'Potion' : entry.kind==='ether' ? 'Ether' : (SEED_DEFS[entry.kind] ? SEED_DEFS[entry.kind].name : (CROP_ITEM_DEFS[entry.kind] ? CROP_ITEM_DEFS[entry.kind].name : FISH_DEFS[entry.kind].name));
     storageFlash(`Withdrew 1 ${nm}.`);
   } else {
     const free = findFreeInvSlot();
@@ -4047,6 +5994,16 @@ function storageItemInfo(entry){
     const f = FISH_DEFS[entry.kind];
     const rc = RARITY_COLORS[f.rarity];
     return {name:f.name, color:rc, desc:`<span style="color:${rc}">${rarityLabel(f.rarity)}</span> <span style="color:#9fb3ff">Fish</span><br>Eat to restore ${f.heal} HP${f.mp?` and ${f.mp} MP`:''}.`, status:'Click to withdraw.'};
+  }
+  if(isSeedKind(entry.kind)){
+    const sd = SEED_DEFS[entry.kind];
+    const rc = RARITY_COLORS[sd.rarity];
+    return {name:sd.name, color:rc, desc:`<span style="color:${rc}">${rarityLabel(sd.rarity)}</span> <span style="color:#9fd07a">Seed</span><br>Plant in tilled soil at the Farmland.`, status:'Click to withdraw.'};
+  }
+  if(isCropKind(entry.kind)){
+    const cd = CROP_ITEM_DEFS[entry.kind];
+    const rc = RARITY_COLORS[cd.rarity];
+    return {name:cd.name, color:rc, desc:`<span style="color:${rc}">${rarityLabel(cd.rarity)}</span> <span style="color:#9fd07a">Crop</span><br>Eat to restore ${cd.heal} HP, or sell it.`, status:'Click to withdraw.'};
   }
   const def = EQUIP_DEFS[entry.id];
   const isQuest = def.slot==='quest';
@@ -4455,6 +6412,16 @@ window.__ff1_sellItem = (key)=>{
     }
     return;
   }
+  if(isCropKind(key)){
+    if(consQty(key)>0){
+      const cd = CROP_ITEM_DEFS[key];
+      consAdd(key, -1);
+      player.gold += cd.sell;
+      updateStatBar();
+      renderSellShop(`Sold a ${cd.name} for ${cd.sell} G!`);
+    }
+    return;
+  }
   const uid = parseInt(key.slice(1));
   const piece = gearByUid(uid);
   if(!piece) return;
@@ -4500,18 +6467,35 @@ window.__ff1_sellHover = (e, key)=>{
 // ---------- BATTLE ----------
 function startRandomBattle(){
   const table = player.zone==='desert' ? desertEnemyTypes : enemyTypes;
-  const et = table[Math.floor(Math.random()*table.length)];
-  beginBattle(et, false);
+  // roll a group of 1-3 foes: usually 1, sometimes 2, occasionally 3
+  const r = Math.random();
+  const count = r < 0.55 ? 1 : (r < 0.85 ? 2 : 3);
+  const group = [];
+  for(let i=0;i<count;i++){
+    group.push(table[Math.floor(Math.random()*table.length)]);
+  }
+  beginBattle(group, false);
 }
 function enterBoss(){
   if(player.bossDefeated){
-    showDialogue('The castle hall is silent. You have already claimed victory.', {buttons:[{label:'OK', action:()=>{hideDialogue(); state='overworld';}}]});
     state='dialog';
+    showDialogue('The garrison is silent. You have already claimed victory.', {buttons:[{label:'OK', action:()=>{hideDialogue(); state='overworld';}}]});
     return;
   }
-  beginBattle(boss, true);
+  if(player.dragonQuest==='none'){
+    state='dialog';
+    showDialogue(
+      `The garrison door is barred from within. A low growl rumbles beyond it.<br>Perhaps someone at the castle knows what dwells inside...`,
+      {center:true, buttons:[{label:'OK', action:()=>{ hideDialogue(); state='overworld'; }}]}
+    );
+    return;
+  }
+  setActiveZone('garrison');
+  player.x=9; player.y=12;
+  player.facing='up';
+  persistSave();
 }
-function beginBattle(template, isBoss){
+function beginBattle(templateOrGroup, isBoss){
   state='battle';
   closeInventory();
   closeCharSheet();
@@ -4521,15 +6505,78 @@ function beginBattle(template, isBoss){
   statBar.style.display='none';
   playerStatus.style.display='block';
   updatePlayerStatusPanel();
+  // accept either a single template (boss/fixed fights) or an array (wild groups)
+  const group = Array.isArray(templateOrGroup) ? templateOrGroup : [templateOrGroup];
+  const enemies = group.map((t,i)=>({
+    ...t,
+    maxhp: t.hp,
+    alive: true,
+    // unique label when duplicates share a name (e.g. "Slime A", "Slime B")
+    label: t.name
+  }));
+  // disambiguate duplicate names with A/B/C suffixes
+  const nameCounts = {};
+  group.forEach(t=>{ nameCounts[t.name]=(nameCounts[t.name]||0)+1; });
+  const seen = {};
+  enemies.forEach(e=>{
+    if(nameCounts[e.name]>1){
+      seen[e.name]=(seen[e.name]||0);
+      e.label = `${e.name} ${String.fromCharCode(65+seen[e.name])}`;
+      seen[e.name]++;
+    }
+  });
+  let introLog;
+  if(isBoss){
+    introLog = `The ${enemies[0].name} blocks your path!`;
+  } else if(enemies.length>1){
+    introLog = `A pack of ${enemies.length} enemies appears!`;
+  } else {
+    introLog = `A wild ${enemies[0].name} appears!`;
+  }
   battle = {
-    enemy: {...template, maxhp: template.hp},
+    enemies,
+    target: 0,          // index of the currently targeted enemy
     isBoss,
     turn:'player',
-    log: isBoss ? `The ${template.name} blocks your path!` : `A wild ${template.name} appears!`,
+    log: introLog,
+    logLines: [introLog],
+    logSeq: 1,
     over:false,
-    shakeT:0
+    shakeT:0,
+    shakeTarget:-1      // which enemy is shaking
   };
   renderBattleMenu();
+}
+// helper: the currently targeted living enemy
+function curTarget(){
+  if(!battle) return null;
+  if(battle.enemies[battle.target] && battle.enemies[battle.target].alive) return battle.enemies[battle.target];
+  // fall back to the first living enemy
+  const idx = battle.enemies.findIndex(e=>e.alive);
+  battle.target = idx;
+  return idx>=0 ? battle.enemies[idx] : null;
+}
+function livingEnemies(){ return battle ? battle.enemies.filter(e=>e.alive) : []; }
+// combat log: keep the latest line plus a short rolling history for the top-left panel
+function setLog(msg){
+  if(!battle) return;
+  battle.log = msg;
+  if(!battle.logLines) battle.logLines = [];
+  battle.logLines.push(msg);
+  battle.logSeq = (battle.logSeq||0) + 1; // monotonic counter for change detection
+  if(battle.logLines.length > 30) battle.logLines.shift(); // keep a scrollable history
+}
+// cycle the target left/right through the living enemies (dir -1 or +1)
+function cycleTarget(dir){
+  if(!battle || battle.turn!=='player') return;
+  const idxs = battle.enemies.map((e,i)=>e.alive?i:-1).filter(i=>i>=0);
+  if(idxs.length<=1) return; // nothing to cycle
+  let pos = idxs.indexOf(battle.target);
+  if(pos<0) pos = 0;
+  pos = (pos + dir + idxs.length) % idxs.length;
+  battle.target = idxs[pos];
+  // refresh the menu so the TARGET button label updates
+  renderBattleMenu(false, 'main');
 }
 
 function renderBattleMenu(disabled, view){
@@ -4538,13 +6585,24 @@ function renderBattleMenu(disabled, view){
   let buttonsHtml = '';
   if(view==='main'){
     const hasAbility = player.hasCleave || player.hasAimedShot;
+    const multi = livingEnemies().length>1;
+    const tgt = curTarget();
+    const targetBtn = multi ? `<button ${d} onclick="window.__ff1_openTarget()">TARGET: ${tgt?tgt.label:'-'}</button>` : '';
     buttonsHtml = `
       <button ${d} onclick="window.__ff1_attack()">ATTACK</button>
       <button ${d} onclick="window.__ff1_openMagic()">MAGIC</button>
       ${hasAbility ? `<button ${d} onclick="window.__ff1_openAbility()">ABILITY</button>` : ''}
       <button ${d} onclick="window.__ff1_item()">POTION x${player.potions}</button>
+      ${targetBtn}
       <button ${d} onclick="window.__ff1_run()">${battle.isBoss?'RUN (n/a)':'RUN'}</button>
     `;
+  } else if(view==='target'){
+    // one button per living enemy to pick who to focus
+    buttonsHtml = livingEnemies().map(e=>{
+      const idx = battle.enemies.indexOf(e);
+      const hpPct = Math.round(Math.max(0,e.hp)/e.maxhp*100);
+      return `<button ${d} onclick="window.__ff1_pickTarget(${idx})">${e.label} (${hpPct}%)</button>`;
+    }).join('') + `<button ${d} onclick="window.__ff1_backMain()">BACK</button>`;
   } else if(view==='magic'){
     buttonsHtml = `
       <button ${d} onclick="window.__ff1_fire()">FIRE (3MP)</button>
@@ -4569,39 +6627,55 @@ function renderBattleMenu(disabled, view){
 function rand(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
 
 function playerAttackAction(){
-  const e = battle.enemy;
+  const e = curTarget();
+  if(!e) return;
   const dmg = Math.max(1, player.atk + rand(-2,2) - e.def);
   e.hp -= dmg;
-  battle.log = `${player.name} attacks! ${e.name} takes ${dmg} damage.`;
-  battle.shakeT = 8;
+  setLog(`${player.name} attacks! ${e.label} takes ${dmg} damage.`);
+  battle.shakeT = 8; battle.shakeTarget = battle.enemies.indexOf(e);
   afterPlayerAction();
 }
 function castDamageSpell(name, cost, dmgBase, dmgVar){
   if(player.mp<cost){
-    battle.log = 'Not enough MP!';
+    setLog('Not enough MP!');
     renderBattleMenu(false,'magic');
     return;
   }
   player.mp-=cost;
-  const e = battle.enemy;
+  const e = curTarget();
+  if(!e) return;
   const dmg = Math.max(2, player.atk + dmgBase - e.def + rand(-dmgVar,dmgVar));
   e.hp -= dmg;
   updateStatBar();
-  battle.log = `${player.name} casts ${name}! ${e.name} takes ${dmg} damage.`;
-  battle.shakeT = 8;
+  setLog(`${player.name} casts ${name}! ${e.label} takes ${dmg} damage.`);
+  battle.shakeT = 8; battle.shakeTarget = battle.enemies.indexOf(e);
   afterPlayerAction();
 }
 function useFreeAbility(name, dmgFn){
-  const e = battle.enemy;
+  const e = curTarget();
+  if(!e) return;
+  // CLEAVE hits all living enemies; others hit the target
+  if(name==='CLEAVE'){
+    let logParts=[];
+    livingEnemies().forEach(en=>{
+      const dmg = dmgFn(en);
+      en.hp -= dmg;
+      logParts.push(`${en.label} (${dmg})`);
+    });
+    setLog(`${player.name} uses CLEAVE! Hits ${logParts.join(', ')}.`);
+    battle.shakeT = 8; battle.shakeTarget = -2; // shake all
+    afterPlayerAction();
+    return;
+  }
   const dmg = dmgFn(e);
   e.hp -= dmg;
-  battle.log = `${player.name} uses ${name}! ${e.name} takes ${dmg} damage.`;
-  battle.shakeT = 8;
+  setLog(`${player.name} uses ${name}! ${e.label} takes ${dmg} damage.`);
+  battle.shakeT = 8; battle.shakeTarget = battle.enemies.indexOf(e);
   afterPlayerAction();
 }
 function playerCureAction(){
   if(player.mp<4){
-    battle.log = 'Not enough MP!';
+    setLog('Not enough MP!');
     renderBattleMenu(false,'magic');
     return;
   }
@@ -4609,12 +6683,12 @@ function playerCureAction(){
   const heal = 25 + player.level*2 + player.cureHealBonus;
   player.hp = Math.min(player.maxhp, player.hp+heal);
   updateStatBar();
-  battle.log = `${player.name} casts CURE and recovers ${heal} HP!`;
+  setLog(`${player.name} casts CURE and recovers ${heal} HP!`);
   afterPlayerAction();
 }
 function playerItemAction(){
   if(player.potions<=0){
-    battle.log='No potions left!';
+    setLog('No potions left!');
     renderBattleMenu();
     return;
   }
@@ -4622,58 +6696,79 @@ function playerItemAction(){
   const heal = 25 + player.potionHealBonus;
   player.hp = Math.min(player.maxhp, player.hp+heal);
   updateStatBar();
-  battle.log = `${player.name} drinks a potion and recovers ${heal} HP!`;
+  setLog(`${player.name} drinks a potion and recovers ${heal} HP!`);
   afterPlayerAction(true);
 }
 function playerRunAction(){
   if(battle.isBoss){
-    battle.log = "You can't run from this battle!";
+    setLog("You can't run from this battle!");
     renderBattleMenu();
     return;
   }
   if(Math.random()<0.7){
-    battle.log = 'Got away safely!';
+    setLog('Got away safely!');
     renderBattleMenu(true);
     setTimeout(()=>{ endBattle(); }, 700);
     return;
   } else {
-    battle.log = "Couldn't escape!";
+    setLog("Couldn't escape!");
     afterPlayerAction(true);
   }
 }
 
 function afterPlayerAction(skipDeathCheckDelay){
   renderBattleMenu(true);
-  const e = battle.enemy;
-  if(e.hp<=0){
-    e.hp=0;
+  // mark any newly-dead enemies
+  let killedNames = [];
+  battle.enemies.forEach(e=>{
+    if(e.alive && e.hp<=0){ e.hp=0; e.alive=false; e.justKilled=true; killedNames.push(e.label); }
+  });
+  // all enemies down? victory
+  if(livingEnemies().length===0){
     setTimeout(()=>victory(), 600);
     return;
+  }
+  // if the current target died, retarget to the next living enemy
+  if(!battle.enemies[battle.target] || !battle.enemies[battle.target].alive){
+    battle.target = battle.enemies.findIndex(e=>e.alive);
   }
   setTimeout(()=>enemyTurn(), 700);
 }
 
 function enemyTurn(){
-  const e = battle.enemy;
-  const dmg = Math.max(1, e.atk + rand(-2,2) - player.def);
-  player.hp -= dmg;
-  updateStatBar();
-  battle.log = `${e.name} attacks! You take ${dmg} damage.`;
-  battle.shakeT = 8;
-  if(player.hp<=0){
-    player.hp=0;
+  // each living enemy attacks in turn
+  const attackers = livingEnemies();
+  let i = 0;
+  const doNext = ()=>{
+    if(i>=attackers.length){
+      // all foes have acted; back to the player
+      battle.turn='player';
+      if(player.hp>0) renderBattleMenu();
+      return;
+    }
+    const e = attackers[i]; i++;
+    if(!e.alive){ doNext(); return; } // (safety) skip any that died mid-sequence
+    const dmg = Math.max(1, e.atk + rand(-2,2) - player.def);
+    player.hp -= dmg;
     updateStatBar();
-    setTimeout(()=>defeat(), 700);
-    return;
-  }
-  renderBattleMenu();
+    setLog(`${e.label} attacks! You take ${dmg} damage.`);
+    battle.shakeT = 6; battle.shakeTarget = -3; // shake the player
+    renderBattleMenu(true);
+    if(player.hp<=0){
+      player.hp=0;
+      updateStatBar();
+      setTimeout(()=>defeat(), 700);
+      return;
+    }
+    setTimeout(doNext, 650);
+  };
+  doNext();
 }
 
 function victory(){
-  const e = battle.enemy;
-  let goldGain = e.gold, expGain = e.exp;
   let text;
   if(battle.isBoss){
+    const e = battle.enemies[0];
     player.bossDefeated = true;
     text = `You have vanquished the ${e.name}!!<br>The realm is saved. Thank you for playing!`;
     if(addGearToInventory('green_dragons_heart')){
@@ -4683,9 +6778,15 @@ function victory(){
       text += `<br><b style="color:${RARITY_COLORS.relic}">The Dragon King's Crown (Relic) has been added to your inventory!</b>`;
     }
   } else {
+    // total up rewards across every foe in the group
+    let goldGain = 0, expGain = 0;
+    battle.enemies.forEach(e=>{ goldGain += e.gold; expGain += e.exp; });
     player.exp += expGain;
     player.gold += goldGain;
-    text = `You defeated the ${e.name}!<br>Gained ${expGain} EXP and ${goldGain} Gold.`;
+    const foeCount = battle.enemies.length;
+    text = foeCount>1
+      ? `You defeated all ${foeCount} foes!<br>Gained ${expGain} EXP and ${goldGain} Gold.`
+      : `You defeated the ${battle.enemies[0].name}!<br>Gained ${expGain} EXP and ${goldGain} Gold.`;
     let leveled=false;
     while(player.exp>=player.expNext){
       player.exp -= player.expNext;
@@ -4736,6 +6837,8 @@ window.__ff1_attack = ()=>{ if(battle && !battle.locked){ playerAttackAction(); 
 window.__ff1_openMagic = ()=>{ if(battle){ renderBattleMenu(false,'magic'); } };
 window.__ff1_openAbility = ()=>{ if(battle){ renderBattleMenu(false,'ability'); } };
 window.__ff1_backMain = ()=>{ if(battle){ renderBattleMenu(false,'main'); } };
+window.__ff1_openTarget = ()=>{ if(battle){ renderBattleMenu(false,'target'); } };
+window.__ff1_pickTarget = (idx)=>{ if(battle && battle.enemies[idx] && battle.enemies[idx].alive){ battle.target = idx; renderBattleMenu(false,'main'); } };
 window.__ff1_fire = ()=>{ if(battle){ castDamageSpell('FIRE',3,8,2); } };
 window.__ff1_ice = ()=>{ if(battle){ castDamageSpell('ICE',4,13,2); } };
 window.__ff1_thunder = ()=>{ if(battle){ castDamageSpell('THUNDER',6,20,3); } };
@@ -4752,46 +6855,508 @@ function drawEnemySprite(cx,cy,e,shakeOffset){
   ctx.fillStyle=e.color;
   const s = e===boss||e.name==='GREEN DRAGON' ? 70 : 46;
   if(e.shape==='blob'){
+    const base = e.color;
+    // wobble animation
+    const wob = Math.sin(animTimer*0.08)*3;
+    const squash = Math.sin(animTimer*0.08)*0.06;
+    const rx = s*0.6 * (1+squash);
+    const ry = s*0.5 * (1-squash);
+    const topY = cy - ry*0.2;
+    // ---- shadow puddle ----
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
     ctx.beginPath();
-    ctx.ellipse(cx,cy,s*0.6,s*0.45,0,0,Math.PI*2);
+    ctx.ellipse(cx, cy+ry*0.7, rx*0.95, ry*0.22, 0, 0, Math.PI*2);
     ctx.fill();
-    ctx.fillStyle='#000';
-    ctx.fillRect(cx-10,cy-6,4,6);
-    ctx.fillRect(cx+6,cy-6,4,6);
+    // ---- gooey body: flat-bottomed dome ----
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.moveTo(cx-rx, cy+ry*0.55);
+    // left side up and over the domed top (wobbling)
+    ctx.bezierCurveTo(cx-rx, cy-ry*0.7, cx-rx*0.4, topY-ry*0.7-wob, cx, topY-ry*0.75-wob);
+    ctx.bezierCurveTo(cx+rx*0.4, topY-ry*0.7-wob, cx+rx, cy-ry*0.7, cx+rx, cy+ry*0.55);
+    // flat wavy bottom with little feet-bumps
+    ctx.bezierCurveTo(cx+rx*0.6, cy+ry*0.72, cx+rx*0.3, cy+ry*0.6, cx, cy+ry*0.72);
+    ctx.bezierCurveTo(cx-rx*0.3, cy+ry*0.6, cx-rx*0.6, cy+ry*0.72, cx-rx, cy+ry*0.55);
+    ctx.closePath();
+    ctx.fill();
+    // ---- translucent inner sheen (lighter core) ----
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(cx-rx*0.25, cy-ry*0.15-wob*0.5, rx*0.3, ry*0.35, -0.3, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // ---- glossy highlight dot ----
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    ctx.ellipse(cx-rx*0.32, cy-ry*0.32-wob*0.5, rx*0.12, ry*0.14, -0.3, 0, Math.PI*2);
+    ctx.fill();
+    // ---- a couple of drips sliding down the body ----
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.ellipse(cx+rx*0.55, cy+ry*0.2 + (Math.sin(animTimer*0.06)*2), 3, 5, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx+rx*0.55, cy+ry*0.5, 2.2, 0, Math.PI*2);
+    ctx.fill();
+    // ---- face: menacing narrowed glowing eyes ----
+    const eg = 0.7 + 0.3*Math.sin(animTimer*0.18);
+    // angled dark eye sockets (angry slant)
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.moveTo(cx-rx*0.44, cy-ry*0.28-wob*0.5);
+    ctx.lineTo(cx-rx*0.1, cy-ry*0.05-wob*0.5);
+    ctx.lineTo(cx-rx*0.12, cy+ry*0.1-wob*0.5);
+    ctx.lineTo(cx-rx*0.46, cy-ry*0.05-wob*0.5);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx+rx*0.44, cy-ry*0.28-wob*0.5);
+    ctx.lineTo(cx+rx*0.1, cy-ry*0.05-wob*0.5);
+    ctx.lineTo(cx+rx*0.12, cy+ry*0.1-wob*0.5);
+    ctx.lineTo(cx+rx*0.46, cy-ry*0.05-wob*0.5);
+    ctx.closePath(); ctx.fill();
+    // glowing slit pupils
+    ctx.fillStyle = `rgba(255,60,60,${eg.toFixed(2)})`;
+    ctx.beginPath(); ctx.ellipse(cx-rx*0.28, cy-ry*0.08-wob*0.5, 3.4, 2, -0.35, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx+rx*0.28, cy-ry*0.08-wob*0.5, 3.4, 2, 0.35, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#3a0000';
+    ctx.fillRect(cx-rx*0.29, cy-ry*0.09-wob*0.5, 1.4, 2.4);
+    ctx.fillRect(cx+rx*0.27, cy-ry*0.09-wob*0.5, 1.4, 2.4);
+    // ---- gaping fanged maw ----
+    const gape = 2 + Math.sin(animTimer*0.1)*1.5;
+    ctx.fillStyle = '#2a0d0d';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy+ry*0.28-wob*0.5, rx*0.26, ry*0.14+gape, 0, 0, Math.PI*2);
+    ctx.fill();
+    // upper fangs
+    ctx.fillStyle = '#f4f4f4';
+    for(let i=0;i<3;i++){
+      const fx = cx - rx*0.16 + i*rx*0.16;
+      const ty = cy+ry*0.28 - (ry*0.14+gape) - wob*0.5;
+      ctx.beginPath();
+      ctx.moveTo(fx-2, ty+2); ctx.lineTo(fx, ty+7); ctx.lineTo(fx+2, ty+2);
+      ctx.closePath(); ctx.fill();
+    }
+    // lower fangs
+    for(let i=0;i<2;i++){
+      const fx = cx - rx*0.08 + i*rx*0.16;
+      const by = cy+ry*0.28 + (ry*0.14+gape) - wob*0.5;
+      ctx.beginPath();
+      ctx.moveTo(fx-2, by-2); ctx.lineTo(fx, by-7); ctx.lineTo(fx+2, by-2);
+      ctx.closePath(); ctx.fill();
+    }
   } else if(e.shape==='bat'){
+    const base = e.color;
+    // darker shade of the base for veins/inner-ears/feet
+    const dark = (()=>{ const h=base.replace('#',''); const r=Math.max(0,parseInt(h.slice(0,2),16)-40), g=Math.max(0,parseInt(h.slice(2,4),16)-40), b=Math.max(0,parseInt(h.slice(4,6),16)-40); return `rgb(${r},${g},${b})`; })();
+    // wing flap animation
+    const flap = Math.sin(animTimer*0.25);
+    const wy = flap*s*0.22; // wingtips rise and fall
+    // ---- wings (membranous, scalloped) ----
+    ctx.fillStyle = base;
+    // left wing
     ctx.beginPath();
-    ctx.moveTo(cx,cy-10);
-    ctx.lineTo(cx-s*0.7,cy+s*0.3);
-    ctx.lineTo(cx-10,cy);
-    ctx.lineTo(cx,cy+s*0.35);
-    ctx.lineTo(cx+10,cy);
-    ctx.lineTo(cx+s*0.7,cy+s*0.3);
-    ctx.closePath();
+    ctx.moveTo(cx-s*0.12, cy);
+    ctx.quadraticCurveTo(cx-s*0.5, cy-s*0.3+wy, cx-s*0.9, cy-s*0.1+wy);
+    // scalloped trailing edge back to body
+    ctx.quadraticCurveTo(cx-s*0.7, cy+s*0.02+wy*0.5, cx-s*0.62, cy+s*0.16+wy*0.4);
+    ctx.quadraticCurveTo(cx-s*0.5, cy+s*0.06+wy*0.4, cx-s*0.42, cy+s*0.2+wy*0.3);
+    ctx.quadraticCurveTo(cx-s*0.32, cy+s*0.1+wy*0.2, cx-s*0.22, cy+s*0.22);
+    ctx.quadraticCurveTo(cx-s*0.16, cy+s*0.12, cx-s*0.12, cy+s*0.14);
+    ctx.closePath(); ctx.fill();
+    // right wing (mirror)
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.12, cy);
+    ctx.quadraticCurveTo(cx+s*0.5, cy-s*0.3+wy, cx+s*0.9, cy-s*0.1+wy);
+    ctx.quadraticCurveTo(cx+s*0.7, cy+s*0.02+wy*0.5, cx+s*0.62, cy+s*0.16+wy*0.4);
+    ctx.quadraticCurveTo(cx+s*0.5, cy+s*0.06+wy*0.4, cx+s*0.42, cy+s*0.2+wy*0.3);
+    ctx.quadraticCurveTo(cx+s*0.32, cy+s*0.1+wy*0.2, cx+s*0.22, cy+s*0.22);
+    ctx.quadraticCurveTo(cx+s*0.16, cy+s*0.12, cx+s*0.12, cy+s*0.14);
+    ctx.closePath(); ctx.fill();
+    // wing finger-struts (darker veins)
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 1.2;
+    [[-1],[1]].forEach(([d])=>{
+      ctx.beginPath();
+      ctx.moveTo(cx+d*s*0.12, cy+s*0.02);
+      ctx.lineTo(cx+d*s*0.55, cy+s*0.14+wy*0.4);
+      ctx.moveTo(cx+d*s*0.12, cy);
+      ctx.lineTo(cx+d*s*0.85, cy-s*0.08+wy);
+      ctx.stroke();
+    });
+    ctx.lineWidth = 1;
+    // ---- furry body ----
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy+s*0.05, s*0.16, s*0.22, 0, 0, Math.PI*2);
     ctx.fill();
-    ctx.fillStyle='#fff';
-    ctx.fillRect(cx-6,cy-4,4,4);
-    ctx.fillRect(cx+2,cy-4,4,4);
+    // little clawed feet
+    ctx.strokeStyle = dark; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.06, cy+s*0.26); ctx.lineTo(cx-s*0.08, cy+s*0.32);
+    ctx.moveTo(cx+s*0.06, cy+s*0.26); ctx.lineTo(cx+s*0.08, cy+s*0.32);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    // ---- head ----
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.arc(cx, cy-s*0.16, s*0.15, 0, Math.PI*2);
+    ctx.fill();
+    // big pointed ears
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.12, cy-s*0.24); ctx.lineTo(cx-s*0.2, cy-s*0.46); ctx.lineTo(cx-s*0.02, cy-s*0.28); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.12, cy-s*0.24); ctx.lineTo(cx+s*0.2, cy-s*0.46); ctx.lineTo(cx+s*0.02, cy-s*0.28); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = dark; // inner ears
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.1, cy-s*0.26); ctx.lineTo(cx-s*0.15, cy-s*0.38); ctx.lineTo(cx-s*0.04, cy-s*0.28); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.1, cy-s*0.26); ctx.lineTo(cx+s*0.15, cy-s*0.38); ctx.lineTo(cx+s*0.04, cy-s*0.28); ctx.closePath(); ctx.fill();
+    // glowing eyes
+    const eg = 0.7 + 0.3*Math.sin(animTimer*0.18);
+    ctx.fillStyle = `rgba(255,220,90,${eg.toFixed(2)})`;
+    ctx.beginPath(); ctx.arc(cx-s*0.06, cy-s*0.16, 2.4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+s*0.06, cy-s*0.16, 2.4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#111';
+    ctx.fillRect(cx-s*0.07, cy-s*0.17, 1.4, 1.8);
+    ctx.fillRect(cx+s*0.05, cy-s*0.17, 1.4, 1.8);
+    // tiny fangs
+    ctx.fillStyle = '#f4f4f4';
+    ctx.beginPath(); ctx.moveTo(cx-s*0.04, cy-s*0.06); ctx.lineTo(cx-s*0.02, cy-s*0.01); ctx.lineTo(cx, cy-s*0.06); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx+s*0.02, cy-s*0.06); ctx.lineTo(cx+s*0.04, cy-s*0.01); ctx.lineTo(cx+s*0.06, cy-s*0.06); ctx.closePath(); ctx.fill();
+  } else if(e.shape==='vulture'){
+    const base = e.color;
+    const dark = (()=>{ const h=base.replace('#',''); const r=Math.max(0,parseInt(h.slice(0,2),16)-45), g=Math.max(0,parseInt(h.slice(2,4),16)-45), b=Math.max(0,parseInt(h.slice(4,6),16)-45); return `rgb(${r},${g},${b})`; })();
+    const flap = Math.sin(animTimer*0.16);
+    const wy = flap*s*0.14;
+    // ---- broad ragged wings, half-spread ----
+    ctx.fillStyle = dark;
+    // left wing
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.14, cy-s*0.05);
+    ctx.quadraticCurveTo(cx-s*0.6, cy-s*0.18+wy, cx-s*0.95, cy+s*0.02+wy);
+    // ragged primary feathers
+    ctx.lineTo(cx-s*0.8, cy+s*0.08+wy);
+    ctx.lineTo(cx-s*0.86, cy+s*0.16+wy);
+    ctx.lineTo(cx-s*0.66, cy+s*0.14+wy*0.7);
+    ctx.lineTo(cx-s*0.7, cy+s*0.22+wy*0.6);
+    ctx.lineTo(cx-s*0.5, cy+s*0.16+wy*0.5);
+    ctx.lineTo(cx-s*0.42, cy+s*0.24+wy*0.4);
+    ctx.lineTo(cx-s*0.3, cy+s*0.12);
+    ctx.lineTo(cx-s*0.14, cy+s*0.1);
+    ctx.closePath(); ctx.fill();
+    // right wing (mirror)
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.14, cy-s*0.05);
+    ctx.quadraticCurveTo(cx+s*0.6, cy-s*0.18+wy, cx+s*0.95, cy+s*0.02+wy);
+    ctx.lineTo(cx+s*0.8, cy+s*0.08+wy);
+    ctx.lineTo(cx+s*0.86, cy+s*0.16+wy);
+    ctx.lineTo(cx+s*0.66, cy+s*0.14+wy*0.7);
+    ctx.lineTo(cx+s*0.7, cy+s*0.22+wy*0.6);
+    ctx.lineTo(cx+s*0.5, cy+s*0.16+wy*0.5);
+    ctx.lineTo(cx+s*0.42, cy+s*0.24+wy*0.4);
+    ctx.lineTo(cx+s*0.3, cy+s*0.12);
+    ctx.lineTo(cx+s*0.14, cy+s*0.1);
+    ctx.closePath(); ctx.fill();
+    // ---- body (dark plumage) ----
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy+s*0.08, s*0.2, s*0.26, 0, 0, Math.PI*2);
+    ctx.fill();
+    // folded wing shading on the body
+    ctx.fillStyle = dark;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy+s*0.12, s*0.14, s*0.2, 0, 0, Math.PI*2);
+    ctx.fill();
+    // taloned feet
+    ctx.strokeStyle = '#c9a94a'; ctx.lineWidth = 1.5; ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.06, cy+s*0.3); ctx.lineTo(cx-s*0.06, cy+s*0.38);
+    ctx.moveTo(cx-s*0.09, cy+s*0.38); ctx.lineTo(cx-s*0.03, cy+s*0.38);
+    ctx.moveTo(cx+s*0.06, cy+s*0.3); ctx.lineTo(cx+s*0.06, cy+s*0.38);
+    ctx.moveTo(cx+s*0.03, cy+s*0.38); ctx.lineTo(cx+s*0.09, cy+s*0.38);
+    ctx.stroke();
+    ctx.lineCap='butt'; ctx.lineWidth = 1;
+    // ---- ruffled white neck ruff ----
+    ctx.fillStyle = '#e8e2d4';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy-s*0.12, s*0.16, s*0.1, 0, 0, Math.PI*2);
+    ctx.fill();
+    // ---- bald head (hunched forward, pinkish) ----
+    ctx.fillStyle = '#b08878';
+    ctx.beginPath();
+    ctx.ellipse(cx+s*0.04, cy-s*0.26, s*0.11, s*0.12, 0, 0, Math.PI*2);
+    ctx.fill();
+    // hooked beak
+    ctx.fillStyle = '#e0c060';
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.12, cy-s*0.3);
+    ctx.lineTo(cx+s*0.3, cy-s*0.22);
+    ctx.quadraticCurveTo(cx+s*0.22, cy-s*0.16, cx+s*0.13, cy-s*0.19);
+    ctx.closePath(); ctx.fill();
+    // beak hook tip
+    ctx.fillStyle = '#3a2a15';
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.3, cy-s*0.22); ctx.lineTo(cx+s*0.28, cy-s*0.15); ctx.lineTo(cx+s*0.24, cy-s*0.18); ctx.closePath(); ctx.fill();
+    // beady eye
+    const eg = 0.7 + 0.3*Math.sin(animTimer*0.16);
+    ctx.fillStyle = `rgba(230,60,40,${eg.toFixed(2)})`;
+    ctx.beginPath(); ctx.arc(cx+s*0.06, cy-s*0.28, 2.2, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#111';
+    ctx.fillRect(cx+s*0.055, cy-s*0.285, 1.4, 1.6);
   } else if(e.shape==='gob'){
-    ctx.fillRect(cx-s*0.35,cy-s*0.4,s*0.7,s*0.75);
-    ctx.fillStyle='#3a2a1a';
-    ctx.fillRect(cx-s*0.35,cy+s*0.28,s*0.7,s*0.2);
-    ctx.fillStyle='#fff';
-    ctx.fillRect(cx-10,cy-s*0.2,5,5);
-    ctx.fillRect(cx+5,cy-s*0.2,5,5);
-  } else if(e.shape==='wolf'){
+    const base = e.color;
+    const dark = '#4a7010';
+    // ---- hunched body / tunic ----
+    ctx.fillStyle = '#5a4326'; // ragged brown tunic
     ctx.beginPath();
-    ctx.moveTo(cx-s*0.5,cy+s*0.3);
-    ctx.lineTo(cx-s*0.5,cy-s*0.1);
-    ctx.lineTo(cx-s*0.15,cy-s*0.35);
-    ctx.lineTo(cx+s*0.5,cy-s*0.1);
-    ctx.lineTo(cx+s*0.5,cy+s*0.3);
+    ctx.moveTo(cx-s*0.28, cy+s*0.4);
+    ctx.lineTo(cx-s*0.22, cy+s*0.02);
+    ctx.lineTo(cx+s*0.22, cy+s*0.02);
+    ctx.lineTo(cx+s*0.28, cy+s*0.4);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle='#e2e8f0';
-    ctx.fillRect(cx-8,cy-4,16,10);
-    ctx.fillStyle='#111';
-    ctx.fillRect(cx-6,cy-s*0.02,4,4);
-    ctx.fillRect(cx+2,cy-s*0.02,4,4);
+    // tattered hem
+    ctx.fillStyle = '#3a2c18';
+    for(let i=0;i<4;i++) ctx.fillRect(cx-s*0.28+i*s*0.15, cy+s*0.38, s*0.08, 4);
+    // ---- legs ----
+    ctx.fillStyle = base;
+    ctx.fillRect(cx-s*0.16, cy+s*0.4, s*0.1, s*0.16);
+    ctx.fillRect(cx+s*0.06, cy+s*0.4, s*0.1, s*0.16);
+    ctx.fillStyle = '#2a1e10'; // feet
+    ctx.fillRect(cx-s*0.18, cy+s*0.54, s*0.14, 4);
+    ctx.fillRect(cx+s*0.04, cy+s*0.54, s*0.14, 4);
+    // ---- arms ----
+    ctx.fillStyle = base;
+    // left arm hanging
+    ctx.fillRect(cx-s*0.3, cy+s*0.04, s*0.08, s*0.28);
+    // right arm raised holding a dagger
+    ctx.save();
+    ctx.translate(cx+s*0.26, cy+s*0.06);
+    ctx.rotate(-0.5);
+    ctx.fillRect(-s*0.04, -s*0.02, s*0.08, s*0.26);
+    ctx.restore();
+    // crude dagger in the raised hand
+    ctx.strokeStyle = '#8a6a2a'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(cx+s*0.34, cy-s*0.12); ctx.lineTo(cx+s*0.4, cy-s*0.05); ctx.stroke();
+    ctx.fillStyle = '#c8cdd4';
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.4, cy-s*0.42);
+    ctx.lineTo(cx+s*0.46, cy-s*0.1);
+    ctx.lineTo(cx+s*0.34, cy-s*0.12);
+    ctx.closePath(); ctx.fill();
+    ctx.lineWidth = 1;
+    // ---- head (big, round, hunched forward) ----
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy-s*0.18, s*0.32, s*0.28, 0, 0, Math.PI*2);
+    ctx.fill();
+    // large pointed ears sticking out
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.28, cy-s*0.22); ctx.lineTo(cx-s*0.6, cy-s*0.34); ctx.lineTo(cx-s*0.26, cy-s*0.08); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.28, cy-s*0.22); ctx.lineTo(cx+s*0.6, cy-s*0.34); ctx.lineTo(cx+s*0.26, cy-s*0.08); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = dark; // inner-ear shading
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.3, cy-s*0.22); ctx.lineTo(cx-s*0.46, cy-s*0.28); ctx.lineTo(cx-s*0.29, cy-s*0.14); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.3, cy-s*0.22); ctx.lineTo(cx+s*0.46, cy-s*0.28); ctx.lineTo(cx+s*0.29, cy-s*0.14); ctx.closePath(); ctx.fill();
+    // brow ridge (menacing)
+    ctx.fillStyle = dark;
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.24, cy-s*0.26); ctx.lineTo(cx-s*0.02, cy-s*0.16); ctx.lineTo(cx-s*0.24, cy-s*0.14); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.24, cy-s*0.26); ctx.lineTo(cx+s*0.02, cy-s*0.16); ctx.lineTo(cx+s*0.24, cy-s*0.14); ctx.closePath(); ctx.fill();
+    // hooked nose
+    ctx.fillStyle = dark;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy-s*0.16); ctx.lineTo(cx+s*0.06, cy-s*0.02); ctx.lineTo(cx-s*0.03, cy-s*0.04); ctx.closePath(); ctx.fill();
+    // beady yellow eyes
+    const eg = 0.75 + 0.25*Math.sin(animTimer*0.12);
+    ctx.fillStyle = `rgba(255,214,74,${eg.toFixed(2)})`;
+    ctx.beginPath(); ctx.arc(cx-s*0.13, cy-s*0.19, 3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+s*0.13, cy-s*0.19, 3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#111';
+    ctx.fillRect(cx-s*0.14, cy-s*0.2, 1.6, 2);
+    ctx.fillRect(cx+s*0.12, cy-s*0.2, 1.6, 2);
+    // snaggle-toothed grin
+    ctx.strokeStyle = '#2a1e10'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(cx-s*0.12, cy-s*0.02); ctx.lineTo(cx+s*0.12, cy-s*0.02); ctx.stroke();
+    ctx.lineWidth = 1;
+    ctx.fillStyle = '#f4f4f4';
+    ctx.beginPath(); ctx.moveTo(cx-s*0.08, cy-s*0.02); ctx.lineTo(cx-s*0.05, cy+s*0.04); ctx.lineTo(cx-s*0.02, cy-s*0.02); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx+s*0.04, cy-s*0.02); ctx.lineTo(cx+s*0.07, cy+s*0.04); ctx.lineTo(cx+s*0.1, cy-s*0.02); ctx.closePath(); ctx.fill();
+  } else if(e.shape==='scorpion'){
+    const base = e.color;
+    const dark = '#9a5a24';
+    const shell = '#e0a05a';
+    // ---- legs (4 per side) fanning out from the body ----
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    for(let i=0;i<4;i++){
+      const ox = cx - s*0.28 + i*s*0.14;
+      const spread = (i-1.5)*0.12;
+      // left legs
+      ctx.beginPath();
+      ctx.moveTo(ox, cy+s*0.05);
+      ctx.lineTo(ox - s*0.18, cy+s*0.2 + Math.abs(spread)*s);
+      ctx.lineTo(ox - s*0.26, cy+s*0.34 + Math.abs(spread)*s);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+    ctx.lineWidth = 1;
+    // ---- segmented abdomen (body) ----
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy+s*0.05, s*0.34, s*0.2, 0, 0, Math.PI*2);
+    ctx.fill();
+    // body segment ridges
+    ctx.fillStyle = dark;
+    for(let i=0;i<3;i++){
+      ctx.beginPath();
+      ctx.ellipse(cx - s*0.14 + i*s*0.14, cy+s*0.05, s*0.03, s*0.16, 0, 0, Math.PI*2);
+      ctx.fill();
+    }
+    // shell highlight
+    ctx.fillStyle = shell;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy-s*0.02, s*0.24, s*0.08, 0, 0, Math.PI*2);
+    ctx.fill();
+    // ---- pincer arms reaching forward (right side) ----
+    ctx.fillStyle = base;
+    // arm segments
+    ctx.save();
+    ctx.strokeStyle = base; ctx.lineWidth = 5; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(cx+s*0.28, cy); ctx.lineTo(cx+s*0.5, cy-s*0.08); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx+s*0.28, cy+s*0.08); ctx.lineTo(cx+s*0.5, cy+s*0.14); ctx.stroke();
+    ctx.restore();
+    // claws (open pincers)
+    [[-0.08],[0.14]].forEach(([oy])=>{
+      const clx = cx+s*0.5, cly = cy+s*oy;
+      ctx.fillStyle = base;
+      ctx.beginPath(); ctx.ellipse(clx, cly, s*0.1, s*0.07, 0.2, 0, Math.PI*2); ctx.fill();
+      // pincer gap
+      ctx.strokeStyle = base; ctx.lineWidth = 3; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(clx+s*0.06, cly-s*0.04); ctx.lineTo(clx+s*0.16, cly-s*0.08); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(clx+s*0.06, cly+s*0.02); ctx.lineTo(clx+s*0.17, cly+s*0.02); ctx.stroke();
+      ctx.lineWidth = 1;
+    });
+    // ---- curved tail arcing up and over with a stinger (left/back, curling forward) ----
+    ctx.strokeStyle = base;
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    const sway = Math.sin(animTimer*0.08)*3;
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.28, cy+s*0.02);
+    ctx.bezierCurveTo(cx-s*0.6, cy-s*0.1, cx-s*0.5, cy-s*0.55, cx-s*0.1+sway, cy-s*0.5);
+    ctx.stroke();
+    // tail segment beads
+    ctx.fillStyle = dark;
+    const segs = [[-0.4,-0.12],[-0.52,-0.3],[-0.4,-0.48],[-0.22,-0.52]];
+    segs.forEach(([ox,oy])=>{ ctx.beginPath(); ctx.arc(cx+s*ox, cy+s*oy, 3, 0, Math.PI*2); ctx.fill(); });
+    ctx.lineCap = 'butt';
+    ctx.lineWidth = 1;
+    // stinger barb
+    ctx.fillStyle = '#3a2410';
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.1+sway, cy-s*0.5);
+    ctx.lineTo(cx-s*0.02+sway, cy-s*0.6);
+    ctx.lineTo(cx+s*0.02+sway, cy-s*0.46);
+    ctx.closePath(); ctx.fill();
+    // venom glint
+    const vg = 0.6 + 0.4*Math.sin(animTimer*0.2);
+    ctx.fillStyle = `rgba(150,255,120,${vg.toFixed(2)})`;
+    ctx.beginPath(); ctx.arc(cx-s*0.01+sway, cy-s*0.58, 1.6, 0, Math.PI*2); ctx.fill();
+    // beady eyes on the body
+    ctx.fillStyle = '#111';
+    ctx.fillRect(cx+s*0.12, cy-s*0.02, 2, 2);
+    ctx.fillRect(cx+s*0.2, cy-s*0.02, 2, 2);
+  } else if(e.shape==='wolf'){
+    // mirror horizontally around cx so the wolf faces left
+    ctx.save();
+    ctx.translate(cx, 0);
+    ctx.scale(-1, 1);
+    ctx.translate(-cx, 0);
+    const base = e.color;
+    // darker shade for legs/underside/tail depth
+    const dark = '#5c6470';
+    // ---- body ----
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, s*0.5, s*0.28, 0, 0, Math.PI*2);
+    ctx.fill();
+    // haunch (rear)
+    ctx.beginPath();
+    ctx.ellipse(cx-s*0.42, cy+s*0.02, s*0.22, s*0.24, 0, 0, Math.PI*2);
+    ctx.fill();
+    // ---- legs ----
+    ctx.fillStyle = dark;
+    const legY = cy + s*0.18, legH = s*0.32, legW = s*0.1;
+    ctx.fillRect(cx-s*0.42, legY, legW, legH); // back leg
+    ctx.fillRect(cx-s*0.22, legY, legW, legH);
+    ctx.fillRect(cx+s*0.18, legY, legW, legH); // front legs
+    ctx.fillRect(cx+s*0.34, legY, legW, legH);
+    // paws
+    ctx.fillStyle = '#3a3f47';
+    [-0.42,-0.22,0.18,0.34].forEach(o=> ctx.fillRect(cx+s*o, legY+legH-3, legW, 3));
+    // ---- bushy tail (raised, rear-left) ----
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.5, cy-s*0.05);
+    ctx.quadraticCurveTo(cx-s*0.9, cy-s*0.25, cx-s*0.82, cy+s*0.12);
+    ctx.quadraticCurveTo(cx-s*0.78, cy-s*0.02, cx-s*0.5, cy+s*0.12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = dark; // tail tip
+    ctx.beginPath();
+    ctx.ellipse(cx-s*0.84, cy-s*0.06, s*0.06, s*0.09, 0.3, 0, Math.PI*2);
+    ctx.fill();
+    // ---- neck + head (lowered, prowling, facing right) ----
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.3, cy-s*0.18);
+    ctx.lineTo(cx+s*0.5, cy+s*0.02);   // neck to head
+    ctx.lineTo(cx+s*0.42, cy+s*0.16);
+    ctx.lineTo(cx+s*0.2, cy+s*0.06);
+    ctx.closePath();
+    ctx.fill();
+    // head
+    ctx.beginPath();
+    ctx.ellipse(cx+s*0.5, cy+s*0.02, s*0.17, s*0.15, 0, 0, Math.PI*2);
+    ctx.fill();
+    // pointed ears
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.4, cy-s*0.1); ctx.lineTo(cx+s*0.44, cy-s*0.28); ctx.lineTo(cx+s*0.52, cy-s*0.12); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.52, cy-s*0.1); ctx.lineTo(cx+s*0.58, cy-s*0.26); ctx.lineTo(cx+s*0.63, cy-s*0.08); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = dark; // inner ear
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.45, cy-s*0.12); ctx.lineTo(cx+s*0.47, cy-s*0.22); ctx.lineTo(cx+s*0.51, cy-s*0.13); ctx.closePath(); ctx.fill();
+    // snout / muzzle
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.62, cy-s*0.02);
+    ctx.lineTo(cx+s*0.82, cy+s*0.06);
+    ctx.lineTo(cx+s*0.62, cy+s*0.12);
+    ctx.closePath();
+    ctx.fill();
+    // nose
+    ctx.fillStyle = '#111';
+    ctx.beginPath(); ctx.arc(cx+s*0.82, cy+s*0.06, 2.2, 0, Math.PI*2); ctx.fill();
+    // bared-teeth snarl
+    ctx.fillStyle = '#f4f4f4';
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.66, cy+s*0.1); ctx.lineTo(cx+s*0.7, cy+s*0.16); ctx.lineTo(cx+s*0.72, cy+s*0.1); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx+s*0.72, cy+s*0.1); ctx.lineTo(cx+s*0.76, cy+s*0.15); ctx.lineTo(cx+s*0.78, cy+s*0.1); ctx.closePath(); ctx.fill();
+    // fierce glowing eye
+    const eg = 0.7 + 0.3*Math.sin(animTimer*0.15);
+    ctx.fillStyle = `rgba(255,206,84,${eg.toFixed(2)})`;
+    ctx.beginPath(); ctx.ellipse(cx+s*0.52, cy-s*0.02, 3, 2, -0.3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#111';
+    ctx.fillRect(cx+s*0.52, cy-s*0.03, 1.5, 2.5);
+    ctx.restore();
   } else if(e.shape==='dragon'){
     ctx.beginPath();
     ctx.ellipse(cx,cy,s*0.65,s*0.5,0,0,Math.PI*2);
@@ -4819,7 +7384,7 @@ function drawEnemySprite(cx,cy,e,shakeOffset){
 function drawBattle(){
   const desert = player.zone==='desert';
   // backdrop
-  const grad = ctx.createLinearGradient(0,0,0,canvas.height);
+  const grad = ctx.createLinearGradient(0,0,0,VIEW_H);
   if(desert){
     grad.addColorStop(0,'#7a4a1a');
     grad.addColorStop(0.6,'#3a2410');
@@ -4829,10 +7394,10 @@ function drawBattle(){
     grad.addColorStop(1,'#050514');
   }
   ctx.fillStyle=grad;
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillRect(0,0,VIEW_W,VIEW_H);
   // ground
   ctx.fillStyle= desert ? '#b89454' : '#241a10';
-  ctx.fillRect(0,340,canvas.width,140);
+  ctx.fillRect(0,340,VIEW_W,140);
   ctx.strokeStyle= desert ? '#9a7a3e' : '#3a2a18';
   for(let i=0;i<8;i++){
     ctx.beginPath();
@@ -4841,18 +7406,67 @@ function drawBattle(){
     ctx.stroke();
   }
   if(battle){
-    const e = battle.enemy;
     let shakeOffset=0;
     if(battle.shakeT>0){
       shakeOffset = (battle.shakeT%2===0?4:-4);
       battle.shakeT--;
     }
-    drawEnemySprite(canvas.width/2, 190, e, shakeOffset);
+    const living = battle.enemies.filter(e=>e.alive);
+    const n = living.length;
+    // spread enemies across the upper battlefield
+    const positions = [];
+    if(n===1){ positions.push(VIEW_W/2); }
+    else if(n===2){ positions.push(VIEW_W*0.35, VIEW_W*0.65); }
+    else { positions.push(VIEW_W*0.25, VIEW_W*0.5, VIEW_W*0.75); }
+    const targetEnemy = curTarget();
+    living.forEach((e, i)=>{
+      const ex = positions[i];
+      const ey = 190;
+      const isTarget = (e===targetEnemy);
+      const myShake = (battle.shakeTarget===-2 || battle.shakeTarget===battle.enemies.indexOf(e)) ? shakeOffset : 0;
+      // target highlight ring under the selected enemy
+      if(isTarget && n>1){
+        ctx.strokeStyle = 'rgba(255,214,74,0.9)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(ex, ey+56, 40, 12, 0, 0, Math.PI*2);
+        ctx.stroke();
+        // little down-arrow marker above
+        const abob = Math.sin(animTimer*0.15)*2;
+        ctx.fillStyle = '#ffd54a';
+        ctx.beginPath();
+        ctx.moveTo(ex-6, ey-52+abob); ctx.lineTo(ex+6, ey-52+abob); ctx.lineTo(ex, ey-44+abob);
+        ctx.closePath(); ctx.fill();
+        ctx.lineWidth = 1;
+      }
+      // scale enemies down a touch when there are more of them
+      drawEnemySprite(ex, ey, e, myShake);
+      // per-enemy mini HP bar + name under each
+      const pct = Math.max(0,e.hp)/e.maxhp;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(ex-38, ey+64, 76, 16);
+      ctx.fillStyle = '#fff';
+      ctx.font = '9px "Courier New", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(e.label, ex, ey+72);
+      // hp bar
+      ctx.fillStyle = '#333';
+      ctx.fillRect(ex-34, ey+74, 68, 4);
+      ctx.fillStyle = pct<0.25 ? '#ef4444' : '#4ade80';
+      ctx.fillRect(ex-34, ey+74, 68*pct, 4);
+      ctx.textAlign = 'left';
+    });
 
-    // enemy status panel
-    const pct = Math.max(0,e.hp)/e.maxhp;
-    enemyStatus.innerHTML = `<div class="box"><div class="enemyName">${e.name}</div>
-      <div class="hpbar-outer"><div class="hpbar-inner" style="width:${pct*100}%; background:${pct<0.25?'var(--hplow)':'var(--hp)'}"></div></div></div>`;
+    // top-left panel: combat log (per-enemy HP bars now live under each sprite)
+    const lines = battle.logLines || [battle.log];
+    // only rebuild when the log actually changed, so the player can scroll history freely
+    if(battle._loggedSeq !== (battle.logSeq||0)){
+      battle._loggedSeq = (battle.logSeq||0);
+      const rows = lines.map(l=>`<div class="logLine">${l}</div>`).join('');
+      enemyStatus.innerHTML = `<div class="box combatLog"><div class="logTitle">COMBAT LOG</div><div class="logScroll" id="logScroll">${rows}</div></div>`;
+      const ls = document.getElementById('logScroll');
+      if(ls) ls.scrollTop = ls.scrollHeight; // snap to newest only when a line was added
+    }
 
     // player sprite bottom-left facing right
     drawPlayerSprite(70,300);
@@ -4889,18 +7503,24 @@ function frame(){
   animTimer++;
   updateCactusDamage();
   const standTile = tileAt(player.x, player.y);
-  const canInteract = (state==='overworld' && ((standTile===6 || standTile===7 || standTile===8) || adjacentToVine() || !!adjacentToWater() || nearFisherman() || nearInnkeeper() || nearShopkeeper() || !!nearPatron() || !!nearCommonsNpc() || (player.zone==='meadow' && COMMONS_COWS.some(c=>Math.abs(player.x-c.x)+Math.abs(player.y-c.y)<=1)) || nearChest()))
+  const canInteract = (state==='overworld' && ((standTile===6 || standTile===7 || standTile===8) || adjacentToVine() || adjacentToSignpost() || !!adjacentToWater() || nearFisherman() || nearInnkeeper() || nearShopkeeper() || !!nearPatron() || !!nearCommonsNpc() || !!nearThroneRoyal() || (player.zone==='hall' && captainAtPost && Math.abs(player.x-CAPTAIN_POST.x)+Math.abs(player.y-CAPTAIN_POST.y)<=1) || nearGarrisonDragon() || (captainRemainsPresent() && Math.abs(player.x-CAPTAIN_REMAINS.x)+Math.abs(player.y-CAPTAIN_REMAINS.y)===1) || (captainAtGarrison() && Math.abs(player.x-CAPTAIN_MUSTER.x)+Math.abs(player.y-CAPTAIN_MUSTER.y)===1) || (player.zone==='inn' && milkmaidAtInn && Math.abs(player.x-MILKMAID_INN.x)+Math.abs(player.y-MILKMAID_INN.y)<=1) || (player.zone==='meadow' && COMMONS_COWS.some(c=>Math.abs(player.x-c.x)+Math.abs(player.y-c.y)<=1)) || (player.zone==='farmland' && FARMLAND_NPCS.some(n=>Math.abs(player.x-n.x)+Math.abs(player.y-n.y)<=1)) || (player.zone==='farmland' && tileAt(player.x,player.y)===48) || nearChest()))
     || (state==='fishing' && fishing && fishing.phase==='bite');
   btnInteractEl.classList.toggle('canInteract', canInteract);
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.clearRect(0,0,VIEW_W,VIEW_H);
   if(state==='fishing') updateFishing();
-  if(state==='overworld' || state==='shop' || state==='fishing' || (state==='dialog' && battle===null)){
+  if(milkmaidWalk && player.zone==='meadow' && state==='overworld') updateMilkmaidWalk();
+  if(captainWalk && player.zone==='hall' && state==='cutscene') updateCaptainWalk();
+  if(captainReturn && player.zone==='hall') updateCaptainReturn();
+  if(musterCharge && player.zone==='overworld') updateMusterCharge();
+  if(milkmaidReturnStage && state==='overworld') updateMilkmaidReturn();
+  if(state==='overworld' || state==='shop' || state==='fishing' || state==='cutscene' || (state==='dialog' && battle===null)){
     drawOverworld();
     drawFishingOverlay();
+    drawTileGridOverlay();
   }
   if(state==='title'){
     ctx.fillStyle='#000';
-    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillRect(0,0,VIEW_W,VIEW_H);
   }
   if(state==='battle'){
     drawBattle();
@@ -5101,6 +7721,9 @@ function applySave(data){
   // ensure nested structures exist even from older saves
   player.itemSlots = data.player.itemSlots || {potion:0, ether:1};
   player.gear = data.player.gear || [];
+  player.farmPlots = data.player.farmPlots || {};
+  player.seedCounts = data.player.seedCounts || {};
+  player.cropCounts = data.player.cropCounts || {};
   player.equipped = data.player.equipped || {weapon:null, armor:null, accessory:null};
   player.unlockedSkills = data.player.unlockedSkills || {};
   heroTunicColor = data.heroTunicColor || heroTunicColor;
@@ -5110,6 +7733,15 @@ function applySave(data){
   player.zone = data.player.zone || 'overworld';
   player.vineDestroyed = !!data.player.vineDestroyed;
   applyVineState();
+  if(typeof syncMilkmaidState==='function') syncMilkmaidState();
+  // captain: in the hall only if met but the dragon quest isn't yet active (declined case);
+  // once active he's mustered at the garrison instead, and gone from the hall after victory.
+  captainWalk = null; captainReturn = null;
+  if(player.captainMet && player.dragonQuest==='none'){
+    captainAtPost = true; captainPos = {x:CAPTAIN_POST.x, y:CAPTAIN_POST.y};
+  } else {
+    captainAtPost = false; captainPos = null;
+  }
   setActiveZone(player.zone);
 }
 function continueGame(){
@@ -5206,8 +7838,8 @@ window.__ff1_doImport = ()=>{
 function startGame(){
   state='dialog';
   showDialogue(
-    `Welcome, brave <b style="color:var(--gold)">${player.name}</b>! Darkness stirs in the castle to the east.<br>
-    Explore the land, grow strong in the tall grass, visit the <b>Inn</b> (campfire sign) and <b>Shop</b> (potion sign), then challenge the <b>Green Dragon</b> (skull door) when ready!`,
+    `Welcome, brave <b style="color:var(--gold)">${player.name}</b>!<br>
+    You're but a common villager in this kingdom. A <b>Green Dragon</b> has just attacked and taken over the <b>Garrison</b> in the <b>Outskirts</b>. Are you brave enough for the challenge?`,
     {center:true, buttons:[{label:"LET'S GO", action:()=>{ hideDialogue(); state='overworld'; }}]}
   );
 }
